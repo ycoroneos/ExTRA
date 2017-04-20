@@ -1,0 +1,6 @@
+[submodule "ExTRA"]
+	path = ExTRA
+	url = git@github.com:ycoroneos/ExTRA.git
+[submodule "fswatch"]
+	path = fswatch
+	url = git@github.com:emcrisostomo/fswatch.git
