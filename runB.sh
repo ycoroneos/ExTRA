@@ -5,4 +5,5 @@
 #./fswatch/src/fswatch -rx --event Updated --event Removed --event Created \
 #  --event Renamed --event IsFile --event IsDir testdir/ | src/src
 #./fswatch/src/fswatch -arx testdir/
-./fswatch/src/fswatch -m poll_monitor -arx testdir/ | src/src birdman
+#./fswatch/src/fswatch -m poll_monitor -arx testdir/ | src/src birdman
+fswatch -m poll_monitor -arx B/ | go run -race src/*.go config/blackmarket.cfg

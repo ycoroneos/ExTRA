@@ -1,8 +1,9 @@
 package main
 
-import (
-	"fmt"
-)
+//import (
+//	"fmt"
+//	"log"
+//)
 
 const (
 	EVENT_FSOP     = 1
@@ -17,7 +18,7 @@ const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
-		fmt.Printf("ExTRA: "+format+"\n", a...)
+		Log.Printf("ExTRA: "+format+"\n", a...)
 	}
 	return
 }
@@ -30,6 +31,18 @@ type FS_OP struct {
 }
 
 type SYNC_OP struct {
+	Host string
+	Data SyncMsg
+}
+
+type SyncMsg struct {
+	From  string
+	Files map[string]File
+	Resp  chan SyncReplyMsg
+}
+
+type SyncReplyMsg struct {
+	Files map[string]bool
 }
 
 type Event struct {
