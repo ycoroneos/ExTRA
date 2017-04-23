@@ -1,9 +1,8 @@
 package main
 
-//import (
-//	"fmt"
-//	"log"
-//)
+import (
+	"net"
+)
 
 const (
 	EVENT_FSOP     = 1
@@ -23,52 +22,39 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
+func check(e error, soft bool) bool {
+	if e != nil {
+		if soft {
+			DPrintf("%v", e)
+			return false
+		}
+		panic(e)
+	}
+	return true
+}
+
 var file_table map[string]File
-
-type FS_OP struct {
-	File   string
-	Action int
-}
-
-type SYNC_OP struct {
-	Host string
-	Data SyncMsg
-}
-
-type SyncMsg struct {
-	From  string
-	Files map[string]File
-	Resp  chan SyncReplyMsg
-}
-
-type SyncReplyMsg struct {
-	Files map[string]bool
-}
 
 type Event struct {
 	Type int
-	Data interface{}
+	//Data interface{}
+
+	//FSOP
+	File   string
+	Action int
+
+	//SYNCOP
+	Host  string
+	From  string
+	Files map[string]File
+	//Resp  chan SyncReplyMsg
+	Resp chan bool
+	Wire net.Conn
+	//Tx   gob.Encoder
+	//Rx   gob.Decoder
 }
 
-type File struct {
-	Path    string
-	Version PairVec
-	Sync    PairVec
-}
-
-//symbolically modifies a file with our ID
-func (f File) Modify() File {
-	val, exists := f.Version.GetPair(ID)
-	if !exists {
-		panic("we dont exist in a file we have")
-	}
-	val.Counter += 1
-	f.Version.Add(val)
-	return f
-}
-
-func (f File) Show() string {
-	out := f.Path
-	out += " -> " + f.Version.Show()
-	return out
+//received in response to a sync attempt
+type SyncReplyMsg struct {
+	Files map[string]bool
 }

@@ -4,3 +4,6 @@
 [submodule "fswatch"]
 	path = fswatch
 	url = git@github.com:emcrisostomo/fswatch.git
+[submodule "go-fswatch"]
+	path = go-fswatch
+	url = https://github.com/andreaskoch/go-fswatch

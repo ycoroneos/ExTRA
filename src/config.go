@@ -1,7 +1,6 @@
 package main
 
 import (
-	//"io"
 	"encoding/json"
 	"io/ioutil"
 	"log"
@@ -10,6 +9,7 @@ import (
 
 type Cfg struct {
 	Id      string
+	Path    string
 	Logfile string
 	Listen  int
 	Hosts   []string

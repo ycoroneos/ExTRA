@@ -6,4 +6,4 @@
 #  --event Renamed --event IsFile --event IsDir testdir/ | src/src
 #./fswatch/src/fswatch -arx testdir/
 #./fswatch/src/fswatch -m poll_monitor -arx testdir/ | src/src birdman
-fswatch -m poll_monitor -arx A/ | go run -race src/*.go config/penny.cfg
+fswatch/src/fswatch -m poll_monitor -arx A/ | go run -race src/*.go config/penny.cfg
