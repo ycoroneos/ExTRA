@@ -7,3 +7,6 @@
 [submodule "go-fswatch"]
 	path = go-fswatch
 	url = https://github.com/andreaskoch/go-fswatch
+[submodule "golang-set"]
+	path = golang-set
+	url = git@github.com:deckarep/golang-set.git
