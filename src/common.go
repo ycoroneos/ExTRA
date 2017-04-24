@@ -33,6 +33,14 @@ func check(e error, soft bool) bool {
 	return true
 }
 
+func gomin(a, b int64) int64 {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
+}
+
 var file_table map[string]File
 
 type Event struct {

@@ -37,12 +37,14 @@ func (w *Watcher) Poll() ([]Sfile, []string) {
 }
 
 func (w *Watcher) HasChanged(path string) bool {
-	found := Sfile{}
-	for _, file := range w.newmap.ToSlice() {
-		if file.(Sfile).Name == path {
-			found = file.(Sfile)
-		}
-	}
+	//	found := Sfile{}
+	//	for _, file := range w.newmap.ToSlice() {
+	//		if file.(Sfile).Name == path {
+	//			found = file.(Sfile)
+	//		}
+	//	}
+	//onething:=mapset.NewSet()
+	//onrthing.Add(Sfile{path})
 	stat, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -51,7 +53,7 @@ func (w *Watcher) HasChanged(path string) bool {
 			check(err, false)
 		}
 	}
-	return (stat.ModTime() != found.Time)
+	return !w.newmap.Contains(Sfile{path, stat.ModTime(), stat.IsDir()})
 }
 
 func (w *Watcher) Addfilter(path string) bool {

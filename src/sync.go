@@ -41,10 +41,9 @@ func syncto(host string, dirtree *Watcher, state map[string]File) map[string]Fil
 	for k, v := range wants {
 		if v {
 			if !dirtree.HasChanged(k) {
-				//DPrintf("sending file %v", k)
-				//				if send_file(conn, v) {
-				//					Dprintf("sent file %v", v)
-				//				}
+				DPrintf("sending file %v", k)
+				if send_file(conn, k) {
+				}
 			}
 		}
 	}
@@ -71,6 +70,14 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File) map[string
 	DPrintf("syncfrom : request files")
 	getfiles(from, want)
 	DPrintf("syncfrom : done")
+
+	for {
+		newfile := receive_file(from)
+		if newfile == "" {
+			break
+		}
+		versions[newfile] = proposed_versions[newfile]
+	}
 
 	//	for {
 	//		filepath := ""
