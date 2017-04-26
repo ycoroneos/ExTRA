@@ -50,29 +50,3 @@ func delta(modified []Sfile, deleted []string, oldstate map[string]File) map[str
 	}
 	return oldstate
 }
-
-//func do_fsop(op Event) {
-//	val, exists := file_table[op.File]
-//	switch op.Action {
-//	case FSOP_DELETE:
-//		//we better have it
-//		if !exists {
-//			panic("trying to delete a file we dont have")
-//		} else {
-//			delete(file_table, op.File)
-//		}
-//
-//	case FSOP_MODIFY:
-//		//we track this file now
-//		if !exists {
-//			newfile := File{op.File, MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}})}
-//			file_table[op.File] = newfile
-//		} else {
-//			newfile := val.Modify()
-//			file_table[op.File] = newfile
-//		}
-//		DPrintf("%s", file_table[op.File].Show())
-//	default:
-//		panic("unimplemented fsop")
-//	}
-//}
