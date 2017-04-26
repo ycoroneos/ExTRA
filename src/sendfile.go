@@ -71,7 +71,7 @@ func receive_file(conn net.Conn) string {
 	if nextchunk.Offset != 0 {
 		panic("out of order reception with TCP?")
 	}
-	fd, err := os.Create(nextchunk.Path + "2")
+	fd, err := os.Create(nextchunk.Path)
 	check(err, false)
 	for {
 		fd.WriteAt(nextchunk.Data, nextchunk.Offset)

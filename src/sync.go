@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/gob"
 	"net"
+	"os"
 	"strconv"
 	"time"
 )
@@ -19,7 +20,7 @@ func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
 }
 
 //sync an entire path to a remote
-func syncto(host string, dirtree *Watcher, state map[string]File) map[string]File {
+func syncto(host string, dirtree *Watcher, state map[string]File, filters map[string]time.Time) map[string]File {
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
@@ -27,14 +28,10 @@ func syncto(host string, dirtree *Watcher, state map[string]File) map[string]Fil
 	}
 	defer conn.Close()
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	//	DPrintf("syncto : challenge response")
-	//	if !challenge_response(conn, true) {
-	//		return state
-	//	}
 	DPrintf("syncto : poll dirtree")
 	modified, deleted := dirtree.Poll()
 	DPrintf("syncto : calculate deltas")
-	versions := delta(modified, deleted, state)
+	versions := delta(modified, deleted, state, filters)
 	DPrintf("syncto : send version vectors")
 	wants := send_versions(conn, versions)
 	DPrintf("syncto : received reply, wants %v files", len(wants))
@@ -53,16 +50,12 @@ func syncto(host string, dirtree *Watcher, state map[string]File) map[string]Fil
 }
 
 //receive an entire path
-func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File) map[string]File {
+func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, infilters map[string]time.Time) (map[string]File, map[string]time.Time) {
 	defer from.Close()
-	//	DPrintf("syncfrom: challenge response")
-	//	if !challenge_response(conn, false) {
-	//		return state
-	//	}
 	DPrintf("syncfrom : poll dirtree")
 	modified, deleted := dirtree.Poll()
 	DPrintf("syncfrom : calculate deltas")
-	versions := delta(modified, deleted, state)
+	versions := delta(modified, deleted, state, infilters)
 	DPrintf("syncfrom : received their versions")
 	proposed_versions := receive_versions(from)
 	DPrintf("syncfrom : resolve differences")
@@ -71,12 +64,21 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File) map[string
 	getfiles(from, want)
 	DPrintf("syncfrom : done")
 
+	filters := make(map[string]time.Time)
 	for {
 		newfile := receive_file(from)
 		if newfile == "" {
 			break
 		}
-		versions[newfile] = proposed_versions[newfile]
+		DPrintf("got file %v", newfile)
+		file := proposed_versions[newfile]
+		//versions[newfile] = proposed_versions[newfile]
+		nfo, _ := os.Stat(newfile)
+		filters[newfile] = nfo.ModTime()
+
+		//fix up time in the new file
+		file.Time = nfo.ModTime()
+		versions[newfile] = file
 	}
 
 	//	for {
@@ -96,7 +98,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File) map[string
 	//		}
 	//	}
 	//wait_done(from)
-	return versions
+	return versions, filters
 }
 
 //func challenge_response(conn net.Conn, challenger bool) bool {

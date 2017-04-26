@@ -24,12 +24,13 @@ func main() {
 }
 
 func event_loop(events chan Event, dirtree *Watcher) {
+	filters := make(map[string]time.Time)
 	for event := range events {
 		switch event.Type {
 		case EVENT_SYNCTO:
-			file_table = syncto(event.Host, dirtree, file_table)
+			file_table = syncto(event.Host, dirtree, file_table, filters)
 		case EVENT_SYNCFROM:
-			file_table = syncfrom(event.Wire, dirtree, file_table)
+			file_table, filters = syncfrom(event.Wire, dirtree, file_table, filters)
 		}
 	}
 }

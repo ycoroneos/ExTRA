@@ -29,7 +29,9 @@ func (f File) Show() string {
 }
 
 //do a pure delta of input to output
-func delta(modified []Sfile, deleted []string, oldstate map[string]File) map[string]File {
+//modification filters are exceptions to file modifications that are set for a file when it
+//is received from a remote and detected as a local modification on the file system
+func delta(modified []Sfile, deleted []string, oldstate map[string]File, modfilters map[string]time.Time) map[string]File {
 	for _, mod := range modified {
 		//skip directories
 		if mod.Isdir {
@@ -38,7 +40,12 @@ func delta(modified []Sfile, deleted []string, oldstate map[string]File) map[str
 			if !exists {
 				oldstate[mod.Name] = File{mod.Name, mod.Time, MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}})}
 			} else {
-				oldstate[mod.Name] = val.Modify()
+				time, ignore := modfilters[mod.Name]
+				if ignore && mod.Time == time {
+					DPrintf("ignoring delta on %s just this once because it was recently synced and left unmodified")
+				} else {
+					oldstate[mod.Name] = val.Modify()
+				}
 			}
 		}
 	}
