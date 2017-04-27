@@ -20,7 +20,14 @@ func MakeWatcher(path string) *Watcher {
 	return out
 }
 
-func (w *Watcher) Poll() ([]Sfile, []string) {
+func (w *Watcher) Poll(filter []Sfile) ([]Sfile, []string) {
+	//first add filters to the old map so they dont show up
+	//in the output of the high pass filter
+	for _, f := range filter {
+		w.oldmap.Add(f)
+	}
+
+	//generate the current directory listing
 	w.newmap = Getdirmap(w.path)
 	modified, deleted := CompareMaps(w.oldmap, w.newmap)
 	w.oldmap = w.newmap

@@ -41,8 +41,6 @@ func gomin(a, b int64) int64 {
 	}
 }
 
-var file_table map[string]File
-
 type Event struct {
 	Type int
 	//Data interface{}

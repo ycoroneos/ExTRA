@@ -14,13 +14,13 @@ func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
 	for _ = range ticker.C {
 		for i := 0; i < len(hosts); i++ {
 			//try to sync to to host
-			events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID, Files: file_table}
+			events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID}
 		}
 	}
 }
 
 //sync an entire path to a remote
-func syncto(host string, dirtree *Watcher, state map[string]File, filters map[string]time.Time) map[string]File {
+func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfile) map[string]File {
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
@@ -28,13 +28,12 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters map[st
 	}
 	defer conn.Close()
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	DPrintf("syncto : poll dirtree")
-	modified, deleted := dirtree.Poll()
+	DPrintf("syncto : poll dirtree, filters are %v", filters)
+	modified, deleted := dirtree.Poll(filters)
 	DPrintf("syncto : calculate deltas")
-	versions := delta(modified, deleted, state, filters)
-	DPrintf("syncto : send version vectors")
+	versions := delta(modified, deleted, state)
+	//DPrintf("syncto : send version vectors, %v", versions)
 	wants := send_versions(conn, versions)
-	DPrintf("syncto : received reply, wants %v files", len(wants))
 	for k, v := range wants {
 		if v {
 			if !dirtree.HasChanged(k) {
@@ -50,21 +49,21 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters map[st
 }
 
 //receive an entire path
-func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, infilters map[string]time.Time) (map[string]File, map[string]time.Time) {
+func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []Sfile) (map[string]File, []Sfile) {
 	defer from.Close()
-	DPrintf("syncfrom : poll dirtree")
-	modified, deleted := dirtree.Poll()
-	DPrintf("syncfrom : calculate deltas")
-	versions := delta(modified, deleted, state, infilters)
+	DPrintf("syncfrom : poll dirtree, filters are %v", filters)
+	modified, deleted := dirtree.Poll(filters)
+	DPrintf("syncfrom : calculate deltas, current state is %v", state)
+	versions := delta(modified, deleted, state)
 	DPrintf("syncfrom : received their versions")
 	proposed_versions := receive_versions(from)
-	DPrintf("syncfrom : resolve differences")
+	//DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
 	want := resolve(versions, proposed_versions)
-	DPrintf("syncfrom : request files")
+	//DPrintf("syncfrom : request files %v", want)
 	getfiles(from, want)
 	DPrintf("syncfrom : done")
 
-	filters := make(map[string]time.Time)
+	filters = make([]Sfile, 0)
 	for {
 		newfile := receive_file(from)
 		if newfile == "" {
@@ -72,15 +71,14 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, infilters 
 		}
 		DPrintf("got file %v", newfile)
 		file := proposed_versions[newfile]
-		//versions[newfile] = proposed_versions[newfile]
 		nfo, _ := os.Stat(newfile)
-		filters[newfile] = nfo.ModTime()
-
 		//fix up time in the new file
 		file.Time = nfo.ModTime()
 		versions[newfile] = file
+		filters = append(filters, Sfile{file.Path, file.Time, false})
 	}
 
+	DPrintf("filters after sync %v", filters)
 	//	for {
 	//		filepath := ""
 	//		dec := gob.NewDecoder(from)
@@ -124,7 +122,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, infilters 
 func resolve(us, theirs map[string]File) map[string]bool {
 	syncmap := make(map[string]bool)
 	for k, v := range theirs {
-		if LEQ(us[k].Version, v.Version) {
+		if LE(us[k].Version, v.Version) {
 			syncmap[k] = true
 		} else {
 			syncmap[k] = false
@@ -207,26 +205,26 @@ func syncreceiver(events chan Event, port int) {
 }
 
 //compare version vectors
-func do_receive_sync(msg Event) {
-
-	defer msg.Wire.Close()
-	their_table := make(map[string]File)
-	dec := gob.NewDecoder(msg.Wire) // Will read from network.
-	enc := gob.NewEncoder(msg.Wire) // Will write to network.
-	DPrintf("decoding their table")
-	check(dec.Decode(&their_table), true)
-
-	//resp := msg.Resp
-	syncmap := make(map[string]bool)
-	DPrintf("looping over their table")
-	for k, v := range their_table {
-		if LEQ(file_table[k].Version, v.Version) {
-			syncmap[k] = true
-		} else {
-			syncmap[k] = false
-		}
-	}
-	DPrintf("sending our response")
-	check(enc.Encode(SyncReplyMsg{syncmap}), true)
-	//close(resp)
-}
+//func do_receive_sync(msg Event) {
+//
+//	defer msg.Wire.Close()
+//	their_table := make(map[string]File)
+//	dec := gob.NewDecoder(msg.Wire) // Will read from network.
+//	enc := gob.NewEncoder(msg.Wire) // Will write to network.
+//	DPrintf("decoding their table")
+//	check(dec.Decode(&their_table), true)
+//
+//	//resp := msg.Resp
+//	syncmap := make(map[string]bool)
+//	DPrintf("looping over their table")
+//	for k, v := range their_table {
+//		if LEQ(file_table[k].Version, v.Version) {
+//			syncmap[k] = true
+//		} else {
+//			syncmap[k] = false
+//		}
+//	}
+//	DPrintf("sending our response")
+//	check(enc.Encode(SyncReplyMsg{syncmap}), true)
+//	//close(resp)
+//}

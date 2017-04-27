@@ -9,7 +9,7 @@ import (
 //Can be used to either represent version or sync pair
 type Pair struct {
 	Id      string
-	Counter int
+	Counter int64
 }
 
 //either version vector or time synchronization vector
@@ -18,15 +18,58 @@ type PairVec struct {
 	Pairs map[string]Pair
 }
 
-//checks if b is a superset of a
-func LEQ(a, b PairVec) bool {
+////checks if b is a superset of a
+//func LEQ(a, b PairVec) bool {
+//	for k, v := range a.Pairs {
+//		val, exists := b.Pairs[k]
+//		if exists && val.Counter < v.Counter {
+//			return false
+//		}
+//	}
+//	return true
+//}
+
+//a and b must be same length
+//all elements in a must be in b
+func EQ(a, b PairVec) bool {
 	for k, v := range a.Pairs {
 		val, exists := b.Pairs[k]
-		if exists && val.Counter < v.Counter {
+		if !exists || val != v {
+			return false
+		}
+	}
+
+	for k, v := range b.Pairs {
+		val, exists := a.Pairs[k]
+		if !exists || val != v {
 			return false
 		}
 	}
 	return true
+}
+
+//checks if a < b
+//every element of a must be <= to its correspoding one in b
+//at least one element in a must be <
+
+func LE(a, b PairVec) bool {
+	//all elements of a are contained in b and are <=
+	for k, v := range a.Pairs {
+		val, exists := b.Pairs[k]
+		if !exists || v.Counter > val.Counter {
+			return false
+		}
+	}
+
+	//check that b has at least one elment that is greater
+	for k, v := range b.Pairs {
+		val, exists := a.Pairs[k]
+		if !exists || v.Counter > val.Counter {
+			return true
+		}
+	}
+
+	return false
 }
 
 //add a new element to the set iff it is newer or does not exist
@@ -60,7 +103,7 @@ func (pv PairVec) GetPair(key string) (Pair, bool) {
 func (pv PairVec) Show() string {
 	out := "<"
 	for _, v := range pv.Pairs {
-		out += v.Id + "_" + strconv.Itoa(v.Counter) + ", "
+		out += v.Id + "_" + strconv.FormatInt(v.Counter, 10) + ", "
 	}
 	out += ">"
 	return out

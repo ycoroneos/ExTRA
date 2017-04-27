@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 )
 
 type FileChunk struct {
@@ -43,7 +44,7 @@ func send_file(conn net.Conn, file string) bool {
 	data, err := ioutil.ReadFile(file)
 	if !check(err, true) {
 	}
-	DPrintf("read file as %v", data)
+	//DPrintf("read file as %v", data)
 	enc.Encode(FileChunk{file, 0, data})
 	//	offset := int64(0)
 	//	for {
@@ -71,8 +72,18 @@ func receive_file(conn net.Conn) string {
 	if nextchunk.Offset != 0 {
 		panic("out of order reception with TCP?")
 	}
-	fd, err := os.Create(nextchunk.Path)
-	check(err, false)
+	//first make the path
+	dir := filepath.Dir(nextchunk.Path)
+	if !check(os.MkdirAll(dir, 0744), true) {
+		DPrintf("bad reception")
+		return ""
+	}
+	//fd, err := os.Create(nextchunk.Path)
+	fd, err := os.OpenFile(nextchunk.Path, os.O_RDWR|os.O_CREATE, 0644)
+	if !check(err, true) {
+		DPrintf("bad reception")
+		return ""
+	}
 	for {
 		fd.WriteAt(nextchunk.Data, nextchunk.Offset)
 		if !check(dec.Decode(&nextchunk), true) {
