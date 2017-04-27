@@ -10,6 +10,16 @@ import (
 
 //generates sync events
 func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
+
+	//	for {
+	//		time.Sleep(timeout + uint(rand.Intn(5))*time.Second)
+	//		for i := 0; i < len(hosts); i++ {
+	//			//try to sync to to host
+	//			events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID}
+	//		}
+	//
+	//	}
+
 	ticker := time.NewTicker(timeout)
 	for _ = range ticker.C {
 		for i := 0; i < len(hosts); i++ {
@@ -28,7 +38,9 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 	}
 	defer conn.Close()
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	DPrintf("syncto : poll dirtree, filters are %v", filters)
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	//DPrintf("syncto : poll dirtree, filters are %v", filters)
+	DPrintf("syncto : poll dirtree")
 	modified, deleted := dirtree.Poll(filters)
 	DPrintf("syncto : calculate deltas")
 	versions := delta(modified, deleted, state)
@@ -39,6 +51,8 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 			if !dirtree.HasChanged(k) {
 				DPrintf("sending file %v", k)
 				if send_file(conn, k) {
+				} else {
+					break
 				}
 			}
 		}
@@ -51,9 +65,13 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 //receive an entire path
 func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []Sfile) (map[string]File, []Sfile) {
 	defer from.Close()
-	DPrintf("syncfrom : poll dirtree, filters are %v", filters)
+	from.SetReadDeadline(time.Now().Add(5 * time.Second))
+	from.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	//DPrintf("syncfrom : poll dirtree, filters are %v", filters)
+	DPrintf("syncfrom : poll dirtree")
 	modified, deleted := dirtree.Poll(filters)
-	DPrintf("syncfrom : calculate deltas, current state is %v", state)
+	//DPrintf("syncfrom : calculate deltas, current state is %v", state)
+	DPrintf("syncfrom : calculate deltas")
 	versions := delta(modified, deleted, state)
 	DPrintf("syncfrom : received their versions")
 	proposed_versions := receive_versions(from)
@@ -78,7 +96,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []
 		filters = append(filters, Sfile{file.Path, file.Time, false})
 	}
 
-	DPrintf("filters after sync %v", filters)
+	//DPrintf("filters after sync %v", filters)
 	//	for {
 	//		filepath := ""
 	//		dec := gob.NewDecoder(from)

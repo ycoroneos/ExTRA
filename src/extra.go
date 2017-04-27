@@ -15,7 +15,7 @@ func main() {
 	//go event_loop(ev_chan)
 	//go fs_monitor(ev_chan, 1, cfg.Path)
 	//go input_parser(ev_chan)
-	go syncmaker(ev_chan, 5*time.Second, cfg.Hosts)
+	go syncmaker(ev_chan, 10*time.Second, cfg.Hosts)
 	go syncreceiver(ev_chan, cfg.Listen)
 	dirtree := MakeWatcher(cfg.Path)
 	event_loop(ev_chan, dirtree, file_table)
