@@ -5,7 +5,7 @@ A re-implementation of the [TRA file synchronizer](http://publications.csail.mit
 In order to better track file history, Tra uses synchonization vectors
 in addition to version vectors. Version vectors track file modification
 history while synchronization vectors track the synchronization history
-of a file. Each file maintains a monotonically increasing counter for
+of a file. Each file is associated with a monotonically increasing counter for
 tracking the causal order of modifications and syncs. With both version
 vectors and synchronization vectors (the time-vector pair), Tra can
 reduce the amount of false positive conflicts and reduce the size of
