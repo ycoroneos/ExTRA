@@ -4,7 +4,9 @@ A re-implementation of the [TRA file synchronizer](http://publications.csail.mit
 ## How To Use
 First write a JSON config file like the samples in config/
 Then run extra out of the sync directory and pass in the config path:
-### path/to/extra/extra.elf path/to/config.cfg
+
+
+path/to/extra/extra.elf path/to/config.cfg
 
 ## How It works
 In order to better track file history, Tra uses synchonization vectors
