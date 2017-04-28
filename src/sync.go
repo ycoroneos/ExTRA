@@ -165,66 +165,66 @@ func do_sync(syncinfo Event) bool {
 }
 
 func syncreceiver(events chan Event, port int, startstop chan string) {
-	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	if err != nil {
-		panic(err)
-	}
-	listening := false
-	loop := true
-	kill := make(chan bool)
-	listen := func() {
-		for {
-			select {
-			case <-kill:
-				return
-			default:
-				conn, err := ln.Accept()
-				check(err, false)
-				events <- Event{Type: EVENT_SYNCFROM, Wire: conn}
-			}
-		}
-	}
-	for loop {
-		cmd := <-startstop
-		switch cmd {
-		case "start":
-			if !listening {
-				kill = make(chan bool)
-				go listen()
-				listening = true
-			}
-		case "stop":
-			if listening {
-				close(kill)
-				ln.Close()
-				listening = false
-			}
-		case "quit":
-			if listening {
-				close(kill)
-				ln.Close()
-				listening = false
-			}
-			loop = false
-		}
-		startstop <- "ok"
-	}
-
 	//	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	//	if err != nil {
 	//		panic(err)
 	//	}
-	//	for {
-	//		conn, err := ln.Accept()
-	//		if err != nil {
-	//			panic(err)
-	//		}
-	//		select {
-	//		case events <- Event{Type: EVENT_SYNCFROM, Wire: conn}:
-	//		default:
-	//			conn.Close()
+	//	listening := false
+	//	loop := true
+	//	kill := make(chan bool)
+	//	listen := func() {
+	//		for {
+	//			select {
+	//			case <-kill:
+	//				return
+	//			default:
+	//				conn, err := ln.Accept()
+	//				check(err, false)
+	//				events <- Event{Type: EVENT_SYNCFROM, Wire: conn}
+	//			}
 	//		}
 	//	}
+	//	for loop {
+	//		cmd := <-startstop
+	//		switch cmd {
+	//		case "start":
+	//			if !listening {
+	//				kill = make(chan bool)
+	//				go listen()
+	//				listening = true
+	//			}
+	//		case "stop":
+	//			if listening {
+	//				close(kill)
+	//				ln.Close()
+	//				listening = false
+	//			}
+	//		case "quit":
+	//			if listening {
+	//				close(kill)
+	//				ln.Close()
+	//				listening = false
+	//			}
+	//			loop = false
+	//		}
+	//		startstop <- "ok"
+	//	}
+
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		select {
+		case events <- Event{Type: EVENT_SYNCFROM, Wire: conn}:
+		default:
+			conn.Close()
+		}
+	}
 }
 
 func StopListening(cmd chan string) {

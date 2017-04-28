@@ -26,9 +26,9 @@ func event_loop(events chan Event, startstop chan string, dirtree *Watcher, file
 	for event := range events {
 		switch event.Type {
 		case EVENT_SYNCTO:
-			StopListening(startstop)
+			//StopListening(startstop)
 			file_table = syncto(event.Host, dirtree, file_table, filters)
-			StartListening(startstop)
+			//StartListening(startstop)
 		case EVENT_SYNCFROM:
 			file_table, filters = syncfrom(event.Wire, dirtree, file_table, filters)
 		}

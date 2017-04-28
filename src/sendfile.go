@@ -40,7 +40,7 @@ func send_file(conn net.Conn, file string) bool {
 	}
 
 	//send permission bits
-	perms := stat.Mode() & os.ModePerm
+	perms := int32(stat.Mode() & os.ModePerm)
 	err = binary.Write(conn, binary.LittleEndian, perms)
 	if !check(err, true) {
 		return false
@@ -89,7 +89,7 @@ func receive_file(conn net.Conn) (string, bool) {
 	}
 
 	//get the permission bits
-	perms := int(0)
+	perms := int32(0)
 	err = binary.Read(conn, binary.LittleEndian, &perms)
 	DPrintf("permissions %v", perms)
 	if !check(err, true) {
@@ -106,7 +106,7 @@ func receive_file(conn net.Conn) (string, bool) {
 	//make the file
 	DPrintf("open file %s, len s %d", filename, len(filename))
 	//fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
-	fd, err := os.OpenFile(filename, perms, 0644)
+	fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, os.FileMode(perms))
 	if !check(err, true) {
 		return "", false
 	}
