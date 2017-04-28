@@ -44,12 +44,6 @@ func delta(modified []Sfile, deleted []string, oldstate map[string]File) map[str
 				oldstate[mod.Name] = File{mod.Name, mod.Time, int64(1), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}})}
 			} else {
 				oldstate[mod.Name] = val.Modify()
-				//				time, ignore := modfilters[mod.Name]
-				//				if ignore && mod.Time == time {
-				//					DPrintf("ignoring delta on %s just this once because it was recently synced and left unmodified")
-				//				} else {
-				//					oldstate[mod.Name] = val.Modify()
-				//				}
 			}
 		}
 	}

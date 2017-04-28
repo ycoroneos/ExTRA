@@ -10,16 +10,6 @@ import (
 
 //generates sync events
 func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
-
-	//	for {
-	//		time.Sleep(timeout + uint(rand.Intn(5))*time.Second)
-	//		for i := 0; i < len(hosts); i++ {
-	//			//try to sync to to host
-	//			events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID}
-	//		}
-	//
-	//	}
-
 	ticker := time.NewTicker(timeout)
 	for _ = range ticker.C {
 		for i := 0; i < len(hosts); i++ {
@@ -31,6 +21,8 @@ func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
 
 //sync an entire path to a remote
 func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfile) map[string]File {
+	//NoListen()
+	//defer Listen()
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
@@ -99,46 +91,8 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []
 		filters = append(filters, Sfile{file.Path, file.Time, false})
 	}
 
-	//DPrintf("filters after sync %v", filters)
-	//	for {
-	//		filepath := ""
-	//		dec := gob.NewDecoder(from)
-	//		if !check(dec.Decode(&filepath), true) {
-	//			break
-	//		}
-	//		if !dirtree.HasChanged(filepath) {
-	//			fd, err := os.Create(filepath)
-	//		}
-	//	}
-	//	for _, newfile := range getfiles(want) {
-	//		if !dirtree.HasChanged(newfile) {
-	//			write(newfile)
-	//			dirtree.Addfilter(newfile)
-	//		}
-	//	}
-	//wait_done(from)
 	return versions, filters
 }
-
-//func challenge_response(conn net.Conn, challenger bool) bool {
-//	enc := gob.NewEncoder(conn)
-//	dec := gob.NewDecoder(conn)
-//	if challenger {
-//		ch := "1+1"
-//		enc.Encode(ch)
-//		dec.Decode(&ch)
-//		return ch == "2"
-//	} else {
-//		ch := ""
-//		dec.Decode(&ch)
-//		if ch == "1+1" {
-//			ch = "2"
-//			enc.Encode(ch)
-//			return true
-//		}
-//		return false
-//	}
-//}
 
 func resolve(us, theirs map[string]File) map[string]bool {
 	syncmap := make(map[string]bool)
@@ -210,42 +164,77 @@ func do_sync(syncinfo Event) bool {
 	return true
 }
 
-func syncreceiver(events chan Event, port int) {
+func syncreceiver(events chan Event, port int, startstop chan string) {
 	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		panic(err)
 	}
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			panic(err)
+	listening := false
+	loop := true
+	kill := make(chan bool)
+	listen := func() {
+		for {
+			select {
+			case <-kill:
+				return
+			default:
+				conn, err := ln.Accept()
+				check(err, false)
+				events <- Event{Type: EVENT_SYNCFROM, Wire: conn}
+			}
 		}
-		//DPrintf("accepted connection")
-		events <- Event{Type: EVENT_SYNCFROM, Wire: conn}
 	}
+	for loop {
+		cmd := <-startstop
+		switch cmd {
+		case "start":
+			if !listening {
+				kill = make(chan bool)
+				go listen()
+				listening = true
+			}
+		case "stop":
+			if listening {
+				close(kill)
+				ln.Close()
+				listening = false
+			}
+		case "quit":
+			if listening {
+				close(kill)
+				ln.Close()
+				listening = false
+			}
+			loop = false
+		}
+		startstop <- "ok"
+	}
+
+	//	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	for {
+	//		conn, err := ln.Accept()
+	//		if err != nil {
+	//			panic(err)
+	//		}
+	//		select {
+	//		case events <- Event{Type: EVENT_SYNCFROM, Wire: conn}:
+	//		default:
+	//			conn.Close()
+	//		}
+	//	}
 }
 
-//compare version vectors
-//func do_receive_sync(msg Event) {
-//
-//	defer msg.Wire.Close()
-//	their_table := make(map[string]File)
-//	dec := gob.NewDecoder(msg.Wire) // Will read from network.
-//	enc := gob.NewEncoder(msg.Wire) // Will write to network.
-//	DPrintf("decoding their table")
-//	check(dec.Decode(&their_table), true)
-//
-//	//resp := msg.Resp
-//	syncmap := make(map[string]bool)
-//	DPrintf("looping over their table")
-//	for k, v := range their_table {
-//		if LEQ(file_table[k].Version, v.Version) {
-//			syncmap[k] = true
-//		} else {
-//			syncmap[k] = false
-//		}
-//	}
-//	DPrintf("sending our response")
-//	check(enc.Encode(SyncReplyMsg{syncmap}), true)
-//	//close(resp)
-//}
+func StopListening(cmd chan string) {
+	cmd <- "stop"
+	<-cmd
+	return
+}
+
+func StartListening(cmd chan string) {
+	cmd <- "start"
+	<-cmd
+	return
+}

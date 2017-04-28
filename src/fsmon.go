@@ -44,14 +44,6 @@ func (w *Watcher) Poll(filter []Sfile) ([]Sfile, []string) {
 }
 
 func (w *Watcher) HasChanged(path string) bool {
-	//	found := Sfile{}
-	//	for _, file := range w.newmap.ToSlice() {
-	//		if file.(Sfile).Name == path {
-	//			found = file.(Sfile)
-	//		}
-	//	}
-	//onething:=mapset.NewSet()
-	//onrthing.Add(Sfile{path})
 	stat, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
