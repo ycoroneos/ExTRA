@@ -37,8 +37,8 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 		return state
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	//conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	//conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	//DPrintf("syncto : poll dirtree, filters are %v", filters)
 	DPrintf("syncto : poll dirtree")
 	modified, deleted := dirtree.Poll(filters)
@@ -65,8 +65,8 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 //receive an entire path
 func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []Sfile) (map[string]File, []Sfile) {
 	defer from.Close()
-	from.SetReadDeadline(time.Now().Add(5 * time.Second))
-	from.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	//from.SetReadDeadline(time.Now().Add(5 * time.Second))
+	//from.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	//DPrintf("syncfrom : poll dirtree, filters are %v", filters)
 	DPrintf("syncfrom : poll dirtree")
 	modified, deleted := dirtree.Poll(filters)
@@ -83,8 +83,11 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []
 
 	filters = make([]Sfile, 0)
 	for {
-		newfile := receive_file(from)
-		if newfile == "" {
+		newfile, good := receive_file(from)
+		if !good {
+			if newfile != "" {
+				os.Remove(newfile)
+			}
 			break
 		}
 		DPrintf("got file %v", newfile)
