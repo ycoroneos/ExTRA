@@ -44,9 +44,12 @@ func (w *Watcher) Poll(filter []Sfile) ([]Sfile, []string) {
 }
 
 func (w *Watcher) HasChanged(path string) bool {
+	DPrintf("checking if %s has changed", path)
 	stat, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			DPrintf("path does not exist")
+			return true
 			//stat = os.FileInfo{}
 		} else {
 			check(err, false)

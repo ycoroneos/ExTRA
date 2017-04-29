@@ -21,8 +21,6 @@ func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
 
 //sync an entire path to a remote
 func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfile) map[string]File {
-	//NoListen()
-	//defer Listen()
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
@@ -37,12 +35,19 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 	DPrintf("syncto : calculate deltas")
 	versions := delta(modified, deleted, state)
 	//DPrintf("syncto : send version vectors, %v", versions)
-	wants := send_versions(conn, versions)
+
+	//update everyone's vector-time pair
+	sync_version := syncmodify(versions)
+
+	//send vector-time pairs
+	wants := send_versions(conn, sync_version)
 	for k, v := range wants {
 		if v {
 			if !dirtree.HasChanged(k) {
 				DPrintf("sending file %v", k)
 				if send_file(conn, k) {
+					//update the file's synchronization vector on success
+					versions[k] = sync_version[k]
 				} else {
 					break
 				}
@@ -68,7 +73,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []
 	DPrintf("syncfrom : received their versions")
 	proposed_versions := receive_versions(from)
 	//DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
-	want := resolve(versions, proposed_versions)
+	want := resolve_tvpair(versions, proposed_versions)
 	//DPrintf("syncfrom : request files %v", want)
 	getfiles(from, want)
 	DPrintf("syncfrom : done")
@@ -87,6 +92,11 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []
 		nfo, _ := os.Stat(newfile)
 		//fix up time in the new file
 		file.Time = nfo.ModTime()
+
+		//update the synchronization vector in the file
+		file.SyncModify()
+
+		//stick it in the map
 		versions[newfile] = file
 		filters = append(filters, Sfile{file.Path, file.Time, false})
 	}
@@ -104,6 +114,20 @@ func resolve(us, theirs map[string]File) map[string]bool {
 		}
 	}
 	return syncmap
+}
+
+func resolve_tvpair(them, us map[string]File) map[string]bool {
+	output := make(map[string]bool)
+	for k, v := range them {
+		if LE(v.Version, us[k].Sync) {
+			output[k] = false
+		} else if LE(us[k].Version, v.Sync) {
+			output[k] = true
+		} else {
+			panic("conflict detected!")
+		}
+	}
+	return output
 }
 
 func send_versions(conn net.Conn, versions map[string]File) map[string]bool {
@@ -165,50 +189,6 @@ func do_sync(syncinfo Event) bool {
 }
 
 func syncreceiver(events chan Event, port int, startstop chan string) {
-	//	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	listening := false
-	//	loop := true
-	//	kill := make(chan bool)
-	//	listen := func() {
-	//		for {
-	//			select {
-	//			case <-kill:
-	//				return
-	//			default:
-	//				conn, err := ln.Accept()
-	//				check(err, false)
-	//				events <- Event{Type: EVENT_SYNCFROM, Wire: conn}
-	//			}
-	//		}
-	//	}
-	//	for loop {
-	//		cmd := <-startstop
-	//		switch cmd {
-	//		case "start":
-	//			if !listening {
-	//				kill = make(chan bool)
-	//				go listen()
-	//				listening = true
-	//			}
-	//		case "stop":
-	//			if listening {
-	//				close(kill)
-	//				ln.Close()
-	//				listening = false
-	//			}
-	//		case "quit":
-	//			if listening {
-	//				close(kill)
-	//				ln.Close()
-	//				listening = false
-	//			}
-	//			loop = false
-	//		}
-	//		startstop <- "ok"
-	//	}
 
 	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {

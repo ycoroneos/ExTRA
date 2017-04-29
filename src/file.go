@@ -8,6 +8,7 @@ type File struct {
 	Path     string
 	Time     time.Time
 	Vcounter int64
+	Scounter int64
 	Version  PairVec
 	Sync     PairVec
 }
@@ -21,6 +22,19 @@ func (f File) Modify() File {
 		f.Version.Add(val)
 	} else {
 		f.Version.Add(Pair{ID, f.Vcounter})
+	}
+	return f
+}
+
+//symbolically synchronizes a file
+func (f File) SyncModify() File {
+	val, exists := f.Sync.GetPair(ID)
+	f.Scounter += 1
+	if exists {
+		val.Counter = f.Scounter
+		f.Sync.Add(val)
+	} else {
+		f.Sync.Add(Pair{ID, f.Scounter})
 	}
 	return f
 }
@@ -41,7 +55,7 @@ func delta(modified []Sfile, deleted []string, oldstate map[string]File) map[str
 		} else {
 			val, exists := oldstate[mod.Name]
 			if !exists {
-				oldstate[mod.Name] = File{mod.Name, mod.Time, int64(1), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}})}
+				oldstate[mod.Name] = File{mod.Name, mod.Time, int64(1), int64(1), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}})}
 			} else {
 				oldstate[mod.Name] = val.Modify()
 			}
@@ -54,4 +68,13 @@ func delta(modified []Sfile, deleted []string, oldstate map[string]File) map[str
 		panic("we dont support deletes yet")
 	}
 	return oldstate
+}
+
+//modify the synchronization vector
+func syncmodify(input map[string]File) map[string]File {
+	output := input
+	for k, v := range output {
+		output[k] = v.SyncModify()
+	}
+	return output
 }
