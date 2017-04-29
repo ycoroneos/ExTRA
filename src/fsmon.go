@@ -20,11 +20,16 @@ func MakeWatcher(path string) *Watcher {
 	return out
 }
 
-func (w *Watcher) Poll(filter []Sfile) ([]Sfile, []string) {
+func (w *Watcher) Poll(filter, deleted_filters []Sfile) ([]Sfile, map[string]bool) {
 	//first add filters to the old map so they dont show up
 	//in the output of the high pass filter
 	for _, f := range filter {
 		w.oldmap.Add(f)
+	}
+
+	//remove deleted things from the old map so they dont show up as deleted
+	for _, f := range deleted_filters {
+		w.oldmap.Remove(f)
 	}
 
 	//generate the current directory listing
@@ -39,8 +44,18 @@ func (w *Watcher) Poll(filter []Sfile) ([]Sfile, []string) {
 		}
 	}
 
-	//we dont support deletes yet
-	return modified, deleted
+	//	faketime := time.Time{}
+	delete_map := make(map[string]bool)
+	for _, d := range deleted {
+		//	val, exists := w.filters[d]
+		//	if exists && val.Time == faketime {
+		//		delete(w.filters, d)
+		//	} else {
+		delete_map[d] = true
+		//	}
+	}
+
+	return modified, delete_map
 }
 
 func (w *Watcher) HasChanged(path string) bool {

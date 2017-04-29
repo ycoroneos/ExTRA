@@ -20,33 +20,27 @@ func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
 }
 
 //sync an entire path to a remote
-func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfile) map[string]File {
+func syncto(host string, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile) map[string]File {
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
 		return state
 	}
 	defer conn.Close()
-	//conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	//conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	//DPrintf("syncto : poll dirtree, filters are %v", filters)
 	DPrintf("syncto : poll dirtree")
-	modified, deleted := dirtree.Poll(filters)
+	modified, deleted := dirtree.Poll(filters, deleted_filters)
+	DPrintf("deleted : %v", deleted)
 	DPrintf("syncto : calculate deltas")
 	versions := delta(modified, deleted, state)
 	//DPrintf("syncto : send version vectors, %v", versions)
 
-	//update everyone's vector-time pair
-	//DPrintf("versions before syncmodify %v", versions)
-	//sync_versions := syncmodify(versions)
-	//DPrintf("versions after syncmodify %v", versions)
-
-	//send vector-time pairs
 	//DPrintf("time-vectors: %v", sync_version)
 	wants := send_versions(conn, versions)
 	for k, v := range wants {
 		if v {
-			if !dirtree.HasChanged(k) {
+			_, delete := deleted[k]
+			if !dirtree.HasChanged(k) || delete {
 				DPrintf("sending file %v", k)
 				if send_file(conn, k) {
 					//update the file's synchronization vector on success
@@ -67,25 +61,24 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters []Sfil
 }
 
 //receive an entire path
-func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []Sfile) (map[string]File, []Sfile) {
+func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile) (map[string]File, []Sfile, []Sfile) {
 	defer from.Close()
-	//from.SetReadDeadline(time.Now().Add(5 * time.Second))
-	//from.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	//DPrintf("syncfrom : poll dirtree, filters are %v", filters)
 	DPrintf("syncfrom : poll dirtree")
-	modified, deleted := dirtree.Poll(filters)
+	modified, deleted := dirtree.Poll(filters, deleted_filters)
 	//DPrintf("syncfrom : calculate deltas, current state is %v", state)
 	DPrintf("syncfrom : calculate deltas")
 	versions := delta(modified, deleted, state)
 	DPrintf("syncfrom : received their versions")
 	proposed_versions, them_id := receive_versions(from)
 	//	DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
-	want := resolve_tvpair(proposed_versions, versions)
+	want := resolve_tvpair_with_delete(proposed_versions, versions)
 	//DPrintf("syncfrom : request files %v", want)
 	getfiles(from, want)
 	DPrintf("syncfrom : done")
 
 	filters = make([]Sfile, 0)
+	deleted_filters = make([]Sfile, 0)
 	for {
 		newfile, good := receive_file(from)
 		if !good {
@@ -96,18 +89,32 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters []
 		}
 		DPrintf("got file %v", newfile)
 		file := proposed_versions[newfile]
-		nfo, _ := os.Stat(newfile)
-		//fix up time in the new file
-		file.Time = nfo.ModTime()
+		nfo, err := os.Stat(newfile)
+		if err == nil {
+			//fix up time in the new file
+			file.Time = nfo.ModTime()
 
-		//update the synchronization vector in the file
+			//update the synchronization vector in the file
 
-		//stick it in the map
-		versions[newfile] = file.BackSync(them_id)
-		filters = append(filters, Sfile{file.Path, file.Time, false})
+			//stick it in the map
+			versions[newfile] = file.BackSync(them_id)
+			filters = append(filters, Sfile{file.Path, file.Time, false})
+		} else if os.IsNotExist(err) {
+			//fix up time in the new file
+			//file.Time = nfo.ModTime()
+
+			//update the synchronization vector in the file
+
+			//stick it in the map
+			versions[newfile] = file.BackSync(them_id)
+			deleted_filters = append(deleted_filters, Sfile{file.Path, time.Time{}, false})
+			DPrintf("deleted a file %v", file.Path)
+		} else {
+			check(err, false)
+		}
 	}
 
-	return versions, filters
+	return versions, filters, deleted_filters
 }
 
 func resolve(us, theirs map[string]File) map[string]bool {
@@ -131,6 +138,37 @@ func resolve_tvpair(them, us map[string]File) map[string]bool {
 			output[k] = true
 		} else {
 			panic("conflict detected!")
+		}
+	}
+	return output
+}
+
+func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
+	output := make(map[string]bool)
+	for k, v := range them {
+		_, err := os.Stat(k)
+		_, exists := us[k]
+		if exists && err == nil {
+			//we know of this file, and it definitely was not deleted
+			if LEQ(v.Version, us[k].Sync) {
+				output[k] = false
+			} else if LEQ(us[k].Version, v.Sync) {
+				output[k] = true
+			} else {
+				panic("conflict detected!")
+			}
+		} else {
+			//we have never seen this file before, or it was deleted
+			DPrintf("them version: %v", v.Version)
+			DPrintf("them creation: %v", v.Creation)
+			DPrintf("us sync: %v", us[k].Sync)
+			if LEQ(v.Version, us[k].Sync) {
+				output[k] = false
+			} else if !LEQ(v.Creation, us[k].Sync) {
+				output[k] = true
+			} else {
+				panic("conflict detected")
+			}
 		}
 	}
 	return output

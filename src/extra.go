@@ -23,14 +23,15 @@ func main() {
 
 func event_loop(events chan Event, startstop chan string, dirtree *Watcher, file_table map[string]File) {
 	var filters []Sfile
+	var deleted_filters []Sfile
 	for event := range events {
 		switch event.Type {
 		case EVENT_SYNCTO:
 			//StopListening(startstop)
-			file_table = syncto(event.Host, dirtree, file_table, filters)
+			file_table = syncto(event.Host, dirtree, file_table, filters, deleted_filters)
 			//StartListening(startstop)
 		case EVENT_SYNCFROM:
-			file_table, filters = syncfrom(event.Wire, dirtree, file_table, filters)
+			file_table, filters, deleted_filters = syncfrom(event.Wire, dirtree, file_table, filters, deleted_filters)
 		}
 	}
 }

@@ -99,6 +99,20 @@ func (pv PairVec) Add(e Pair) PairVec {
 	return pv
 }
 
+//trims to the latest version vector
+func (pv PairVec) Trim() PairVec {
+	if len(pv.Pairs) == 0 {
+		return pv
+	}
+	biggest := Pair{"", int64(0)}
+	for _, v := range pv.Pairs {
+		if v.Counter >= biggest.Counter {
+			biggest = v
+		}
+	}
+	return MakePairVec([]Pair{biggest})
+}
+
 //for making a new one
 func MakePairVec(initial []Pair) PairVec {
 	out := PairVec{make(map[string]Pair)}

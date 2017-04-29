@@ -14,7 +14,11 @@ func send_file(conn net.Conn, file string) bool {
 	}
 	fd, err := os.Open(file)
 	if !check(err, true) {
-		return false
+		if os.IsNotExist(err) {
+			return send_delete(conn, file)
+		} else {
+			return false
+		}
 	}
 	stat, err := fd.Stat()
 	if !check(err, true) {
@@ -63,6 +67,26 @@ func send_file(conn net.Conn, file string) bool {
 	return true
 }
 
+func send_delete(conn net.Conn, file string) bool {
+	//send name
+	namebuf := []byte(file)
+	namebuf = append(namebuf, make([]byte, 1024-len(namebuf))...)
+	n, err := conn.Write(namebuf)
+	if n != len(namebuf) {
+		return false
+	}
+	if !check(err, true) {
+		return false
+	}
+
+	//send size
+	err = binary.Write(conn, binary.LittleEndian, int64(-1))
+	if !check(err, true) {
+		return false
+	}
+	return true
+}
+
 func receive_file(conn net.Conn) (string, bool) {
 
 	//get the name
@@ -81,9 +105,9 @@ func receive_file(conn net.Conn) (string, bool) {
 	filesz := int64(0)
 	err = binary.Read(conn, binary.LittleEndian, &filesz)
 	DPrintf("file size %v", filesz)
-	//	if filesz == 0 {
-	//		return "", false
-	//	}
+	if filesz == -1 {
+		return delete_file(filename)
+	}
 	if !check(err, true) {
 		return "", false
 	}
@@ -132,5 +156,17 @@ func receive_file(conn net.Conn) (string, bool) {
 	}
 	done := int64(-1)
 	binary.Write(conn, binary.LittleEndian, done)
+	return filename, true
+}
+
+func delete_file(filename string) (string, bool) {
+	//first check if it exists
+	err := os.Remove(filename)
+	if !check(err, true) {
+		if os.IsNotExist(err) {
+			return filename, true
+		}
+		return "", false
+	}
 	return filename, true
 }
