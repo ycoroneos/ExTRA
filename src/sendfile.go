@@ -106,7 +106,7 @@ func receive_file(conn net.Conn) (string, bool) {
 	//make the file
 	DPrintf("open file %s, len s %d", filename, len(filename))
 	//fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
-	fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, os.FileMode(perms))
+	fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(perms))
 	if !check(err, true) {
 		return "", false
 	}

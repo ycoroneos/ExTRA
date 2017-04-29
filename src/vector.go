@@ -18,6 +18,14 @@ type PairVec struct {
 	Pairs map[string]Pair
 }
 
+func (p PairVec) GetSlice() []Pair {
+	out := make([]Pair, 0)
+	for _, v := range p.Pairs {
+		out = append(out, v)
+	}
+	return out
+}
+
 ////checks if b is a superset of a
 //func LEQ(a, b PairVec) bool {
 //	for k, v := range a.Pairs {
@@ -70,6 +78,12 @@ func LE(a, b PairVec) bool {
 	}
 
 	return false
+}
+
+func LEQ(a, b PairVec) bool {
+	result := LE(a, b) || EQ(a, b)
+	//DPrintf("%v <= %v %v", a, b, result)
+	return result
 }
 
 //add a new element to the set iff it is newer or does not exist

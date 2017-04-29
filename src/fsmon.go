@@ -79,7 +79,13 @@ func Getdirmap(path string) mapset.Set {
 		if err != nil {
 			panic(err)
 		}
-		output.Add(Sfile{path, info.ModTime(), info.IsDir()})
+		mode := info.Mode()
+
+		//ignore non-files
+		if (mode&os.ModeSymlink) > 0 || (mode&os.ModeSocket) > 0 || (mode&os.ModeDevice) > 0 || (mode&os.ModeNamedPipe) > 0 {
+		} else {
+			output.Add(Sfile{path, info.ModTime(), info.IsDir()})
+		}
 		return nil
 	}
 	filepath.Walk(path, walkfunc)

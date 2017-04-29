@@ -17,7 +17,7 @@ const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
-		Log.Printf("ExTRA: "+format+"\n", a...)
+		Log.Printf(ID+": "+format+"\n", a...)
 	}
 	return
 }
