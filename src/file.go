@@ -8,8 +8,7 @@ type File struct {
 	Path     string
 	Time     time.Time
 	Deleted  bool
-	Vcounter int64
-	Scounter int64
+	Counter  int64
 	Creation PairVec //holds a single Pair
 	Version  PairVec
 	Sync     PairVec
@@ -17,7 +16,7 @@ type File struct {
 
 //why do i need this?
 func (f File) Copy() File {
-	out := File{f.Path, f.Time, f.Deleted, f.Vcounter, f.Scounter, MakePairVec(f.Creation.GetSlice()), MakePairVec(f.Version.GetSlice()), MakePairVec(f.Sync.GetSlice())}
+	out := File{f.Path, f.Time, f.Deleted, f.Counter, MakePairVec(f.Creation.GetSlice()), MakePairVec(f.Version.GetSlice()), MakePairVec(f.Sync.GetSlice())}
 	return out
 }
 
@@ -47,12 +46,12 @@ func (f File) Baptize() File {
 //symbolically modifies a file with our ID
 func (f File) Modify() File {
 	val, exists := f.Version.GetPair(ID)
-	f.Vcounter += 1
+	f.Counter += 1
 	if exists {
-		val.Counter = f.Vcounter
+		val.Counter = f.Counter
 		f.Version.Add(val)
 	} else {
-		f.Version.Add(Pair{ID, f.Vcounter})
+		f.Version.Add(Pair{ID, f.Counter})
 	}
 	//interesting optimization
 	f.Version = f.Version.Trim()
@@ -61,26 +60,27 @@ func (f File) Modify() File {
 
 //symbolically synchronizes a file
 func (f File) SyncModify() File {
+	DPrintf("syncmodify %v", f)
 	val, exists := f.Sync.GetPair(ID)
-	f.Scounter += 1
+	//f.Scounter += 1
 	//DPrintf("syncmodify %v to %v", f.Path, f.Scounter)
 	if exists {
-		val.Counter = f.Scounter
+		val.Counter = f.Counter
 		f.Sync.Add(val)
 	} else {
-		f.Sync.Add(Pair{ID, f.Scounter})
+		f.Sync.Add(Pair{ID, f.Counter})
 	}
 	return f
 }
 
 func (f File) BackSync(them_id string) File {
 	val, exists := f.Sync.GetPair(them_id)
-	f.Scounter += 1
+	//f.Scounter += 1
 	if exists {
-		val.Counter = f.Scounter
+		val.Counter = f.Counter
 		f.Sync.Add(val)
 	} else {
-		f.Sync.Add(Pair{them_id, f.Scounter})
+		f.Sync.Add(Pair{them_id, f.Counter})
 	}
 	return f
 }
@@ -99,7 +99,7 @@ func delta(modified []Sfile, deleted map[string]bool, oldstate map[string]File) 
 		} else {
 			val, exists := oldstate[mod.Name]
 			if !exists {
-				oldstate[mod.Name] = File{mod.Name, mod.Time, false, int64(1), int64(0), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{})}
+				oldstate[mod.Name] = File{mod.Name, mod.Time, false, int64(0), MakePairVec([]Pair{Pair{ID, 0}}), MakePairVec([]Pair{Pair{ID, 0}}), MakePairVec([]Pair{})}
 			} else {
 				if val.Deleted {
 					oldstate[mod.Name] = val.Modify().Baptize()

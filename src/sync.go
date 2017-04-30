@@ -116,7 +116,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 			check(err, false)
 		}
 	}
-	Cleanup(".")
+	//Cleanup(".")
 	return versions, filters, deleted_filters
 }
 
@@ -153,18 +153,18 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 		_, exists := us[k]
 		if exists && err == nil {
 			//we know of this file, and it definitely was not deleted
-			DPrintf("----%v-------", v.Path)
-			DPrintf("them version: %v", v.Version)
-			DPrintf("them creation: %v", v.Creation)
-			DPrintf("them sync: %v", v.Sync)
-			DPrintf("us version: %v", us[k].Version)
-			DPrintf("us creation: %v", us[k].Creation)
-			DPrintf("us sync: %v", us[k].Sync)
 			if LEQ(v.Version, us[k].Sync) {
 				output[k] = false
 			} else if LEQ(us[k].Version, v.Sync) {
 				output[k] = true
 			} else {
+				DPrintf("----%v-------", v.Path)
+				DPrintf("them version: %v", v.Version)
+				DPrintf("them creation: %v", v.Creation)
+				DPrintf("them sync: %v", v.Sync)
+				DPrintf("us version: %v", us[k].Version)
+				DPrintf("us creation: %v", us[k].Creation)
+				DPrintf("us sync: %v", us[k].Sync)
 				panic("conflict detected!")
 			}
 		} else {
@@ -177,6 +177,9 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 			} else if !LEQ(v.Creation, us[k].Sync) {
 				output[k] = true
 			} else {
+				DPrintf("them version: %v", v.Version)
+				DPrintf("them creation: %v", v.Creation)
+				DPrintf("us sync: %v", us[k].Sync)
 				panic("conflict detected")
 			}
 		}
