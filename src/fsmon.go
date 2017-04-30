@@ -29,14 +29,17 @@ func (w *Watcher) Poll(filter, deleted_filters []Sfile) ([]Sfile, map[string]boo
 
 	//remove deleted things from the old map so they dont show up as deleted
 	for _, f := range deleted_filters {
-		DPrintf("removing %v from the oldmap", f)
+		//		DPrintf("oldmap has %v", w.oldmap)
 		w.oldmap.Remove(f)
-		DPrintf("oldmap has %v", w.oldmap)
+		//	DPrintf("oldmap has %v", w.oldmap)
 	}
 
 	//generate the current directory listing
 	w.newmap = Getdirmap(w.path)
+	//	DPrintf("new map is %v", w.newmap)
+	//	DPrintf("old map is %v", w.oldmap)
 	modified, deleted := CompareMaps(w.oldmap, w.newmap)
+	//	DPrintf("deleted is %v", deleted)
 	w.oldmap = w.newmap
 	for i := 0; i < len(modified); i++ {
 		val, exists := w.filters[modified[i].Name]
@@ -99,7 +102,7 @@ func Getdirmap(path string) mapset.Set {
 		mode := info.Mode()
 
 		//ignore non-files
-		if (mode&os.ModeSymlink) > 0 || (mode&os.ModeSocket) > 0 || (mode&os.ModeDevice) > 0 || (mode&os.ModeNamedPipe) > 0 {
+		if (mode&os.ModeSymlink) > 0 || (mode&os.ModeSocket) > 0 || (mode&os.ModeDevice) > 0 || (mode&os.ModeNamedPipe) > 0 || info.IsDir() {
 		} else {
 			output.Add(Sfile{path, info.ModTime(), info.IsDir()})
 		}
@@ -107,6 +110,51 @@ func Getdirmap(path string) mapset.Set {
 	}
 	filepath.Walk(path, walkfunc)
 	return output
+}
+
+func Cleanup(dpath string) int {
+	//	if isdir
+	//	return 1
+	//
+	//	else
+	//	sum=0
+	//	for d in range readdirnames:
+	//		count=Cleanup(d)
+	//		sum+=count
+	//		if count==0
+	//			delete d
+	//	return sum
+
+	stat, err := os.Stat(dpath)
+	if !check(err, true) {
+		return 1
+	}
+	if !stat.IsDir() {
+		//DPrintf("not a dir")
+		return 1
+	}
+	sum := 0
+	fd, err := os.Open(dpath)
+	if !check(err, true) {
+		return 1
+	}
+	defer fd.Close()
+	subdirs, err := fd.Readdirnames(0)
+	for _, d := range subdirs {
+		if d == "." || d == ".." {
+			continue
+		}
+		newpath := filepath.Join(dpath, d)
+		count := Cleanup(newpath)
+		if count == 0 {
+			err = os.Remove(newpath)
+			if !check(err, true) {
+				return 1
+			}
+		}
+		sum += count
+	}
+	return sum
 }
 
 func CompareMaps(old, new mapset.Set) ([]Sfile, []string) {

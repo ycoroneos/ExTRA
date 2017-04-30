@@ -30,7 +30,7 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters, delet
 	//DPrintf("syncto : poll dirtree, filters are %v", filters)
 	DPrintf("syncto : poll dirtree")
 	modified, deleted := dirtree.Poll(filters, deleted_filters)
-	DPrintf("deleted : %v", deleted)
+	//DPrintf("deleted : %v", deleted)
 	DPrintf("syncto : calculate deltas")
 	versions := delta(modified, deleted, state)
 	//DPrintf("syncto : send version vectors, %v", versions)
@@ -39,20 +39,22 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters, delet
 	wants := send_versions(conn, versions)
 	for k, v := range wants {
 		if v {
-			_, delete := deleted[k]
-			if !dirtree.HasChanged(k) || delete {
-				DPrintf("sending file %v", k)
-				if send_file(conn, k) {
-					//update the file's synchronization vector on success
-					file := versions[k]
-					//file.SyncModify()
-					versions[k] = file.SyncModify()
-					//versions[k] = sync_versions[k]
-				} else {
-					DPrintf("the file did not send")
-					break
-				}
+			//_, delete := deleted[k]
+			//if !dirtree.HasChanged(k) || delete {
+			//_, delete := deleted[k]
+			//	if !dirtree.HasChanged(k) {
+			DPrintf("sending file %v", k)
+			if send_file(conn, k) {
+				//update the file's synchronization vector on success
+				file := versions[k]
+				//file.SyncModify()
+				versions[k] = file.SyncModify()
+				//versions[k] = sync_versions[k]
+			} else {
+				DPrintf("the file did not send")
+				break
 			}
+			//	}
 		}
 	}
 	DPrintf("syncto : done sending files")
@@ -114,7 +116,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 			check(err, false)
 		}
 	}
-
+	Cleanup(".")
 	return versions, filters, deleted_filters
 }
 
@@ -151,6 +153,13 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 		_, exists := us[k]
 		if exists && err == nil {
 			//we know of this file, and it definitely was not deleted
+			DPrintf("----%v-------", v.Path)
+			DPrintf("them version: %v", v.Version)
+			DPrintf("them creation: %v", v.Creation)
+			DPrintf("them sync: %v", v.Sync)
+			DPrintf("us version: %v", us[k].Version)
+			DPrintf("us creation: %v", us[k].Creation)
+			DPrintf("us sync: %v", us[k].Sync)
 			if LEQ(v.Version, us[k].Sync) {
 				output[k] = false
 			} else if LEQ(us[k].Version, v.Sync) {
@@ -160,9 +169,9 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 			}
 		} else {
 			//we have never seen this file before, or it was deleted
-			DPrintf("them version: %v", v.Version)
-			DPrintf("them creation: %v", v.Creation)
-			DPrintf("us sync: %v", us[k].Sync)
+			//DPrintf("them version: %v", v.Version)
+			//DPrintf("them creation: %v", v.Creation)
+			//DPrintf("us sync: %v", us[k].Sync)
 			if LEQ(v.Version, us[k].Sync) {
 				output[k] = false
 			} else if !LEQ(v.Creation, us[k].Sync) {

@@ -7,6 +7,7 @@ import (
 type File struct {
 	Path     string
 	Time     time.Time
+	Deleted  bool
 	Vcounter int64
 	Scounter int64
 	Creation PairVec //holds a single Pair
@@ -16,8 +17,31 @@ type File struct {
 
 //why do i need this?
 func (f File) Copy() File {
-	out := File{f.Path, f.Time, f.Vcounter, f.Scounter, MakePairVec(f.Creation.GetSlice()), MakePairVec(f.Version.GetSlice()), MakePairVec(f.Sync.GetSlice())}
+	out := File{f.Path, f.Time, f.Deleted, f.Vcounter, f.Scounter, MakePairVec(f.Creation.GetSlice()), MakePairVec(f.Version.GetSlice()), MakePairVec(f.Sync.GetSlice())}
 	return out
+}
+
+//symbolically deletes a file
+func (f File) Delete() File {
+	//DPrintf("delete %v from versions %v", f.Path, f)
+	if f.Deleted {
+		DPrintf("WARNING: deleting an already deleted file")
+	}
+	f.Deleted = true
+	return f
+}
+
+//symbolically re-creates an independant file with the same name
+func (f File) Baptize() File {
+	DPrintf("baptize %v", f.Path)
+	if !f.Deleted {
+		DPrintf("WARNING: baptizing an un-deleted file")
+	}
+	f.Deleted = false
+	firstvec := f.Version.GetSlice()[0]
+	f.Creation = MakePairVec([]Pair{firstvec})
+	//f.Creation.Add(Pair{ID, f.Vcounter})
+	return f
 }
 
 //symbolically modifies a file with our ID
@@ -68,8 +92,6 @@ func (f File) Show() string {
 }
 
 //do a pure delta of input to output
-//modification filters are exceptions to file modifications that are set for a file when it
-//is received from a remote and detected as a local modification on the file system
 func delta(modified []Sfile, deleted map[string]bool, oldstate map[string]File) map[string]File {
 	for _, mod := range modified {
 		//skip directories
@@ -77,18 +99,26 @@ func delta(modified []Sfile, deleted map[string]bool, oldstate map[string]File) 
 		} else {
 			val, exists := oldstate[mod.Name]
 			if !exists {
-				oldstate[mod.Name] = File{mod.Name, mod.Time, int64(1), int64(0), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{})}
+				oldstate[mod.Name] = File{mod.Name, mod.Time, false, int64(1), int64(0), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{Pair{ID, 1}}), MakePairVec([]Pair{})}
 			} else {
-				oldstate[mod.Name] = val.Modify()
+				if val.Deleted {
+					oldstate[mod.Name] = val.Modify().Baptize()
+				} else {
+					oldstate[mod.Name] = val.Modify()
+				}
 			}
 		}
 	}
 
-	//we dont support deletes yet
 	for del, _ := range deleted {
 		//deletes are treated as another modification
+		//DPrintf("fsmon deleting %s", del)
+		if oldstate[del].Deleted {
+			DPrintf("WARNING: fsmon tried to delete a deleted file from a sync")
+			continue
+		}
 		file := oldstate[del]
-		file = file.Modify()
+		file = file.Modify().Delete()
 		oldstate[del] = file
 		//DPrintf("%v", del)
 		//panic("we dont support deletes yet")

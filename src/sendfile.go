@@ -161,6 +161,7 @@ func receive_file(conn net.Conn) (string, bool) {
 
 func delete_file(filename string) (string, bool) {
 	//first check if it exists
+	//dir := filepath.Dir(filename)
 	err := os.Remove(filename)
 	if !check(err, true) {
 		if os.IsNotExist(err) {
