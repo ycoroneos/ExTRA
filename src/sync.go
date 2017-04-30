@@ -106,8 +106,9 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 			//update the synchronization vector in the file
 
 			//stick it in the map
+			oldtime := versions[newfile].Time
 			versions[newfile] = file.BackSync(them_id)
-			deleted_filters = append(deleted_filters, Sfile{file.Path, time.Time{}, false})
+			deleted_filters = append(deleted_filters, Sfile{file.Path, oldtime, false})
 			DPrintf("deleted a file %v", file.Path)
 		} else {
 			check(err, false)

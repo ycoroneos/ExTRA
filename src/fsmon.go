@@ -29,7 +29,9 @@ func (w *Watcher) Poll(filter, deleted_filters []Sfile) ([]Sfile, map[string]boo
 
 	//remove deleted things from the old map so they dont show up as deleted
 	for _, f := range deleted_filters {
+		DPrintf("removing %v from the oldmap", f)
 		w.oldmap.Remove(f)
+		DPrintf("oldmap has %v", w.oldmap)
 	}
 
 	//generate the current directory listing
