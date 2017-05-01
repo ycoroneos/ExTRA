@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-//ExTRA starts with input from fswatch piped in
 func main() {
 	config_path := string(os.Args[1])
 	cfg, _ := read_config(config_path)
@@ -13,25 +12,35 @@ func main() {
 	file_table := make(map[string]File)
 	ev_chan := make(chan Event)
 	startstop_chan := make(chan string)
+	dirtree := MakeWatcher(cfg.Path)
+	crashstate, good := load_persist(cfg.Persistfile)
+	if good {
+		dirtree = MakeFromSerial(crashstate.Filetree)
+		file_table = crashstate.Filetable
+	}
+	pfunc := func(table map[string]File, tree SerialWatcher) bool {
+		return Persist(table, tree, cfg.Persistfile)
+	}
 	go syncmaker(ev_chan, 10*time.Second, cfg.Hosts)
 	go syncreceiver(ev_chan, cfg.Listen, startstop_chan)
-	dirtree := MakeWatcher(cfg.Path)
-	event_loop(ev_chan, startstop_chan, dirtree, file_table)
-	//for {
-	//	}
+	event_loop(ev_chan, startstop_chan, dirtree, file_table, pfunc)
 }
 
-func event_loop(events chan Event, startstop chan string, dirtree *Watcher, file_table map[string]File) {
+func event_loop(events chan Event, startstop chan string, dirtree *Watcher, file_table map[string]File, pfunc persistfunc) {
 	var filters []Sfile
 	var deleted_filters []Sfile
 	for event := range events {
 		switch event.Type {
 		case EVENT_SYNCTO:
-			//StopListening(startstop)
-			file_table = syncto(event.Host, dirtree, file_table, filters, deleted_filters)
-			//StartListening(startstop)
+			file_table = syncto(event.Host, dirtree, file_table, filters, deleted_filters, pfunc)
+			if !pfunc(file_table, dirtree.Serialize()) {
+				DPrintf("could not persist after syncto")
+			}
 		case EVENT_SYNCFROM:
-			file_table, filters, deleted_filters = syncfrom(event.Wire, dirtree, file_table, filters, deleted_filters)
+			file_table, filters, deleted_filters = syncfrom(event.Wire, dirtree, file_table, filters, deleted_filters, pfunc)
+			if !pfunc(file_table, dirtree.Serialize()) {
+				DPrintf("could not persist after syncto")
+			}
 		}
 	}
 }

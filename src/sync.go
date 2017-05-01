@@ -20,7 +20,7 @@ func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
 }
 
 //sync an entire path to a remote
-func syncto(host string, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile) map[string]File {
+func syncto(host string, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile, persist persistfunc) map[string]File {
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
@@ -63,7 +63,7 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters, delet
 }
 
 //receive an entire path
-func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile) (map[string]File, []Sfile, []Sfile) {
+func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile, persist persistfunc) (map[string]File, []Sfile, []Sfile) {
 	defer from.Close()
 	//DPrintf("syncfrom : poll dirtree, filters are %v", filters)
 	DPrintf("syncfrom : poll dirtree")
@@ -165,7 +165,9 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 				DPrintf("us version: %v", us[k].Version)
 				DPrintf("us creation: %v", us[k].Creation)
 				DPrintf("us sync: %v", us[k].Sync)
-				panic("conflict detected!")
+				DPrintf("CONFLICT : %s", v.Path)
+				output[k] = false
+				//panic("conflict detected!")
 			}
 		} else {
 			//we have never seen this file before, or it was deleted
@@ -180,7 +182,9 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 				DPrintf("them version: %v", v.Version)
 				DPrintf("them creation: %v", v.Creation)
 				DPrintf("us sync: %v", us[k].Sync)
-				panic("conflict detected")
+				DPrintf("CONFLICT : %s", v.Path)
+				output[k] = false
+				//panic("conflict detected")
 			}
 		}
 	}

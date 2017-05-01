@@ -8,12 +8,13 @@ import (
 )
 
 type Cfg struct {
-	Id      string
-	Path    string
-	Logfile string
-	Listen  int
-	Hosts   []string
-	Cmd     int
+	Id          string
+	Path        string
+	Logfile     string
+	Persistfile string
+	Listen      int
+	Hosts       []string
+	Cmd         int
 }
 
 var ID string

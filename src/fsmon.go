@@ -8,10 +8,29 @@ import (
 )
 
 type Watcher struct {
-	oldmap  mapset.Set
-	newmap  mapset.Set
-	path    string
-	filters map[string]Sfile
+	Oldmap  mapset.Set
+	Newmap  mapset.Set
+	Path    string
+	Filters map[string]Sfile
+}
+
+type SerialWatcher struct {
+	Oldmap  []Sfile
+	Newmap  []Sfile
+	Path    string
+	Filters map[string]Sfile
+}
+
+func MakeFromSerial(s SerialWatcher) *Watcher {
+	oldmap := mapset.NewSet()
+	for _, k := range s.Oldmap {
+		oldmap.Add(k)
+	}
+	newmap := mapset.NewSet()
+	for _, k := range s.Newmap {
+		newmap.Add(k)
+	}
+	return &Watcher{oldmap, newmap, s.Path, s.Filters}
 }
 
 func MakeWatcher(path string) *Watcher {
@@ -20,32 +39,44 @@ func MakeWatcher(path string) *Watcher {
 	return out
 }
 
+func (w *Watcher) Serialize() SerialWatcher {
+	oldset := make([]Sfile, w.Oldmap.Cardinality())
+	for i, arg := range w.Oldmap.ToSlice() {
+		oldset[i] = arg.(Sfile)
+	}
+	newset := make([]Sfile, w.Newmap.Cardinality())
+	for i, arg := range w.Newmap.ToSlice() {
+		newset[i] = arg.(Sfile)
+	}
+	return SerialWatcher{oldset, newset, w.Path, w.Filters}
+}
+
 func (w *Watcher) Poll(filter, deleted_filters []Sfile) ([]Sfile, map[string]bool) {
 	//first add filters to the old map so they dont show up
 	//in the output of the high pass filter
 	for _, f := range filter {
-		w.oldmap.Add(f)
+		w.Oldmap.Add(f)
 	}
 
 	//remove deleted things from the old map so they dont show up as deleted
 	for _, f := range deleted_filters {
 		//		DPrintf("oldmap has %v", w.oldmap)
-		w.oldmap.Remove(f)
+		w.Oldmap.Remove(f)
 		//	DPrintf("oldmap has %v", w.oldmap)
 	}
 
 	//generate the current directory listing
-	w.newmap = Getdirmap(w.path)
+	w.Newmap = Getdirmap(w.Path)
 	//	DPrintf("new map is %v", w.newmap)
 	//	DPrintf("old map is %v", w.oldmap)
-	modified, deleted := CompareMaps(w.oldmap, w.newmap)
+	modified, deleted := CompareMaps(w.Oldmap, w.Newmap)
 	//	DPrintf("deleted is %v", deleted)
-	w.oldmap = w.newmap
+	w.Oldmap = w.Newmap
 	for i := 0; i < len(modified); i++ {
-		val, exists := w.filters[modified[i].Name]
+		val, exists := w.Filters[modified[i].Name]
 		if exists && val.Time == modified[i].Time {
 			modified = append(modified[:i], modified[i+1:]...)
-			delete(w.filters, modified[i].Name)
+			delete(w.Filters, modified[i].Name)
 		}
 	}
 
@@ -75,7 +106,7 @@ func (w *Watcher) HasChanged(path string) bool {
 			check(err, false)
 		}
 	}
-	return !w.newmap.Contains(Sfile{path, stat.ModTime(), stat.IsDir()})
+	return !w.Newmap.Contains(Sfile{path, stat.ModTime(), stat.IsDir()})
 }
 
 func (w *Watcher) Addfilter(path string) bool {
@@ -83,7 +114,7 @@ func (w *Watcher) Addfilter(path string) bool {
 	if !check(err, false) {
 		return false
 	}
-	w.filters[path] = Sfile{path, stat.ModTime(), stat.IsDir()}
+	w.Filters[path] = Sfile{path, stat.ModTime(), stat.IsDir()}
 	return true
 }
 
@@ -97,7 +128,10 @@ func Getdirmap(path string) mapset.Set {
 	output := mapset.NewSet()
 	walkfunc := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			panic(err)
+			if os.IsNotExist(err) {
+			} else {
+				panic(err)
+			}
 		}
 		mode := info.Mode()
 
