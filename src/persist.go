@@ -7,11 +7,13 @@ import (
 )
 
 type Persister struct {
-	Filetable map[string]File
-	Filetree  SerialWatcher
+	Filetable       map[string]File
+	Filetree        SerialWatcher
+	Filters         []Sfile
+	Deleted_filters []Sfile
 }
 
-type persistfunc func(map[string]File, SerialWatcher) bool
+type persistfunc func(map[string]File, SerialWatcher, []Sfile, []Sfile) bool
 
 var persister Persister
 
@@ -31,14 +33,14 @@ func load_persist(file string) (Persister, bool) {
 	return persist, true
 }
 
-func Persist(table map[string]File, tree SerialWatcher, persistfile string) bool {
+func Persist(table map[string]File, tree SerialWatcher, filter, deleted_filters []Sfile, persistfile string) bool {
 	fd, err := os.OpenFile(persistfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if !check(err, true) {
 		return false
 	}
 	defer fd.Close()
 	enc := gob.NewEncoder(fd) // Will write to file
-	p := Persister{table, tree}
+	p := Persister{table, tree, filter, deleted_filters}
 	if !check(enc.Encode(p), true) {
 		return false
 	}
