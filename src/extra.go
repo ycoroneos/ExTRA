@@ -32,7 +32,7 @@ func event_loop(events chan Event, startstop chan string, dirtree *Watcher, file
 	for event := range events {
 		switch event.Type {
 		case EVENT_SYNCTO:
-			file_table = syncto(event.Host, dirtree, file_table, filters, deleted_filters, pfunc)
+			file_table = syncto(event.Host, event.Username, dirtree, file_table, filters, deleted_filters, pfunc)
 			if !pfunc(file_table, dirtree.Serialize()) {
 				DPrintf("could not persist after syncto")
 			}

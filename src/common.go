@@ -50,9 +50,10 @@ type Event struct {
 	Action int
 
 	//SYNCOP
-	Host  string
-	From  string
-	Files map[string]File
+	Host     string
+	Username string
+	From     string
+	Files    map[string]File
 	//Resp  chan SyncReplyMsg
 	Resp chan bool
 	Wire net.Conn

@@ -70,11 +70,13 @@ func (f File) SyncModify() File {
 	} else {
 		f.Sync.Add(Pair{ID, f.Counter})
 	}
+	DPrintf("syncmodify new %v", f)
 	return f
 }
 
 func (f File) BackSync(them_id string) File {
 	val, exists := f.Sync.GetPair(them_id)
+	DPrintf("backsyncmodify %v", f)
 	//f.Scounter += 1
 	if exists {
 		val.Counter = f.Counter
@@ -82,6 +84,7 @@ func (f File) BackSync(them_id string) File {
 	} else {
 		f.Sync.Add(Pair{them_id, f.Counter})
 	}
+	DPrintf("backsyncmodify new %v", f)
 	return f
 }
 

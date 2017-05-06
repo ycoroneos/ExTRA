@@ -9,18 +9,21 @@ import (
 )
 
 //generates sync events
-func syncmaker(events chan Event, timeout time.Duration, hosts []string) {
+func syncmaker(events chan Event, timeout time.Duration, hosts map[string]string) {
 	ticker := time.NewTicker(timeout)
 	for _ = range ticker.C {
-		for i := 0; i < len(hosts); i++ {
-			//try to sync to to host
-			events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID}
+		for k, v := range hosts {
+			events <- Event{Type: EVENT_SYNCTO, Host: v, Username: k, From: ID}
 		}
+		//	for i := 0; i < len(hosts); i++ {
+		//		//try to sync to to host
+		//		events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID}
+		//	}
 	}
 }
 
 //sync an entire path to a remote
-func syncto(host string, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile, persist persistfunc) map[string]File {
+func syncto(host string, username string, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile, persist persistfunc) map[string]File {
 	DPrintf("syncto : try and connect")
 	conn, err := net.Dial("tcp", host)
 	if !check(err, true) {
@@ -38,24 +41,35 @@ func syncto(host string, dirtree *Watcher, state map[string]File, filters, delet
 	//DPrintf("time-vectors: %v", sync_version)
 	wants := send_versions(conn, versions)
 	for k, v := range wants {
-		if v {
-			//_, delete := deleted[k]
-			//if !dirtree.HasChanged(k) || delete {
-			//_, delete := deleted[k]
-			//	if !dirtree.HasChanged(k) {
+		if v.Send {
+			//send and sync
 			DPrintf("sending file %v", k)
 			if send_file(conn, k) {
 				//update the file's synchronization vector on success
 				file := versions[k]
-				//file.SyncModify()
-				versions[k] = file.SyncModify()
-				//versions[k] = sync_versions[k]
+				versions[k] = file.SyncModify().BackSync(username)
 			} else {
 				DPrintf("the file did not send")
 				break
 			}
-			//	}
+		} else if v.Sync {
+			//just sync but dont send
+			file := versions[k]
+			versions[k] = file.SyncModify().BackSync(username)
 		}
+
+		//		if v {
+		//			DPrintf("sending file %v", k)
+		//			if send_file(conn, k) {
+		//				//update the file's synchronization vector on success
+		//				file := versions[k]
+		//				versions[k] = file.SyncModify()
+		//			} else {
+		//				DPrintf("the file did not send")
+		//				break
+		//			}
+		//			//	}
+		//		}
 	}
 	DPrintf("syncto : done sending files")
 	//send_done(conn)
@@ -74,13 +88,15 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 	DPrintf("syncfrom : received their versions")
 	proposed_versions, them_id := receive_versions(from)
 	//	DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
-	want := resolve_tvpair_with_delete(proposed_versions, versions)
+	//want, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_ours)
+	want, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_complain)
 	//DPrintf("syncfrom : request files %v", want)
 	getfiles(from, want)
 	DPrintf("syncfrom : done")
 
 	filters = make([]Sfile, 0)
 	deleted_filters = make([]Sfile, 0)
+	//receive new files and merged files
 	for {
 		newfile, good := receive_file(from)
 		if !good {
@@ -99,7 +115,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 			//update the synchronization vector in the file
 
 			//stick it in the map
-			versions[newfile] = file.BackSync(them_id)
+			versions[newfile] = file.BackSync(them_id).SyncModify()
 			filters = append(filters, Sfile{file.Path, file.Time, false})
 		} else if os.IsNotExist(err) {
 			//fix up time in the new file
@@ -109,13 +125,39 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 
 			//stick it in the map
 			oldtime := versions[newfile].Time
-			versions[newfile] = file.BackSync(them_id)
+			versions[newfile] = file.BackSync(them_id).SyncModify()
 			deleted_filters = append(deleted_filters, Sfile{file.Path, oldtime, false})
 			DPrintf("deleted a file %v", file.Path)
 		} else {
 			check(err, false)
 		}
 	}
+
+	for _, c := range resolutions {
+		if c.Resolution == MERGE {
+			//update version vector for merges
+			merged := merge(c.Filename)
+			if !merged {
+				//dont merge if something went wrong
+				continue
+			}
+			modTime, good := getmodtime(c.Filename)
+			if !good {
+				continue
+			}
+			file := versions[c.Filename]
+			file.Time = modTime
+			file = file.Modify()
+			versions[c.Filename] = file
+			filters = append(filters, Sfile{file.Path, file.Time, false})
+		} else if c.Resolution == KEEP_OURS {
+			//update sync vector for conflicts we keep
+			file := versions[c.Filename]
+			versions[c.Filename] = file.BackSync(them_id).SyncModify()
+		}
+
+	}
+
 	//Cleanup(".")
 	return versions, filters, deleted_filters
 }
@@ -146,17 +188,26 @@ func resolve_tvpair(them, us map[string]File) map[string]bool {
 	return output
 }
 
-func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
-	output := make(map[string]bool)
+func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[string]Receive_data, []ConflictResolution) {
+	output := make(map[string]Receive_data)
+	conflict_decisions := make([]ConflictResolution, 0)
 	for k, v := range them {
 		_, err := os.Stat(k)
 		_, exists := us[k]
 		if exists && err == nil {
 			//we know of this file, and it definitely was not deleted
+			//			DPrintf("them version: %v", v.Version)
+			//			DPrintf("them creation: %v", v.Creation)
+			//			DPrintf("them sync: %v", v.Sync)
+			//			DPrintf("us version: %v", us[k].Version)
+			//			DPrintf("us creation: %v", us[k].Creation)
+			//			DPrintf("us sync: %v", us[k].Sync)
 			if LEQ(v.Version, us[k].Sync) {
-				output[k] = false
+				//output[k] = false
+				output[k] = Receive_data{false, false}
 			} else if LEQ(us[k].Version, v.Sync) {
-				output[k] = true
+				//output[k] = true
+				output[k] = Receive_data{true, true}
 			} else {
 				DPrintf("----%v-------", v.Path)
 				DPrintf("them version: %v", v.Version)
@@ -166,29 +217,38 @@ func resolve_tvpair_with_delete(them, us map[string]File) map[string]bool {
 				DPrintf("us creation: %v", us[k].Creation)
 				DPrintf("us sync: %v", us[k].Sync)
 				DPrintf("CONFLICT : %s", v.Path)
-				output[k] = false
+				take, decision := cf(v.Path)
+				//output[k] = take
+				output[k] = Receive_data{take, true}
+				conflict_decisions = append(conflict_decisions, decision)
 				//panic("conflict detected!")
 			}
 		} else {
 			//we have never seen this file before, or it was deleted
-			//DPrintf("them version: %v", v.Version)
-			//DPrintf("them creation: %v", v.Creation)
-			//DPrintf("us sync: %v", us[k].Sync)
+			//			DPrintf("them version: %v", v.Version)
+			//			DPrintf("them creation: %v", v.Creation)
+			//			DPrintf("us sync: %v", us[k].Sync)
 			if LEQ(v.Version, us[k].Sync) {
-				output[k] = false
+				//output[k] = false
+				output[k] = Receive_data{false, false}
 			} else if !LEQ(v.Creation, us[k].Sync) {
-				output[k] = true
+				//output[k] = true
+				output[k] = Receive_data{true, true}
 			} else {
 				DPrintf("them version: %v", v.Version)
 				DPrintf("them creation: %v", v.Creation)
 				DPrintf("us sync: %v", us[k].Sync)
 				DPrintf("CONFLICT : %s", v.Path)
-				output[k] = false
+				//output[k] = false
+				take, decision := cf(v.Path)
+				//output[k] = take
+				output[k] = Receive_data{take, true}
+				conflict_decisions = append(conflict_decisions, decision)
 				//panic("conflict detected")
 			}
 		}
 	}
-	return output
+	return output, conflict_decisions
 }
 
 type Send_data struct {
@@ -196,16 +256,21 @@ type Send_data struct {
 	Versions map[string]File
 }
 
-func send_versions(conn net.Conn, versions map[string]File) map[string]bool {
-	wants := make(map[string]bool)
+type Receive_data struct {
+	Send bool
+	Sync bool
+}
+
+func send_versions(conn net.Conn, versions map[string]File) map[string]Receive_data {
+	wants := make(map[string]Receive_data)
 	enc := gob.NewEncoder(conn) // Will write to network.
 	send := Send_data{ID, versions}
 	if !check(enc.Encode(send), true) {
-		return make(map[string]bool)
+		return make(map[string]Receive_data)
 	}
 	dec := gob.NewDecoder(conn)
 	if !check(dec.Decode(&wants), true) {
-		return make(map[string]bool)
+		return make(map[string]Receive_data)
 	}
 	return wants
 }
@@ -220,7 +285,7 @@ func receive_versions(conn net.Conn) (map[string]File, string) {
 	return receive.Versions, receive.From
 }
 
-func getfiles(conn net.Conn, want map[string]bool) {
+func getfiles(conn net.Conn, want map[string]Receive_data) {
 	enc := gob.NewEncoder(conn)
 	if !check(enc.Encode(want), true) {
 	}

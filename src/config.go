@@ -13,7 +13,7 @@ type Cfg struct {
 	Logfile     string
 	Persistfile string
 	Listen      int
-	Hosts       []string
+	Hosts       map[string]string
 	Cmd         int
 }
 
