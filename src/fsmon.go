@@ -109,14 +109,14 @@ func (w *Watcher) HasChanged(path string) bool {
 	return !w.Newmap.Contains(Sfile{path, stat.ModTime(), stat.IsDir()})
 }
 
-func (w *Watcher) Addfilter(path string) bool {
-	stat, err := os.Stat(path)
-	if !check(err, false) {
-		return false
-	}
-	w.Filters[path] = Sfile{path, stat.ModTime(), stat.IsDir()}
-	return true
-}
+//func (w *Watcher) Addfilter(path string) bool {
+//	stat, err := os.Stat(path)
+//	if !check(err, false) {
+//		return false
+//	}
+//	w.Filters[path] = Sfile{path, stat.ModTime(), stat.IsDir()}
+//	return true
+//}
 
 type Sfile struct {
 	Name  string
