@@ -8,8 +8,11 @@ import (
 func TestAverage(t *testing.T) {
 	them := Rollhash("../tests/hashA.txt")
 	us := Rollhash("../tests/hashB.txt")
-	fmt.Printf("hash1: %v\n", them)
-	fmt.Printf("hash2: %v\n", us)
-	we_need := CompareChunks(them, us)
-	fmt.Printf("we need: %v\n", we_need)
+	fmt.Printf("hash1: %v\n\n", them)
+	fmt.Printf("hash2: %v\n\n", us)
+	we_need, chunk_deltas := CompareChunks(them, us)
+	fmt.Printf("we need: %v\n\n", we_need)
+	for _, c := range chunk_deltas {
+		fmt.Printf("chunk %v -> %v\n", c.Chunk, c.Moveto)
+	}
 }

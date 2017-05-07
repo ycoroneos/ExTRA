@@ -57,17 +57,26 @@ func Rollhash(filename string) []FileChunk {
 	return chunks
 }
 
-func CompareChunks(them, ours []FileChunk) []FileChunk {
+type ChunkDelta struct {
+	Chunk  FileChunk
+	Moveto int64
+}
+
+func CompareChunks(them, ours []FileChunk) ([]FileChunk, []ChunkDelta) {
 	need := make([]FileChunk, 0)
+	have := make([]ChunkDelta, 0)
 	index := 0
-	for i := 0; i < len(ours); i++ {
+	for i := 0; i < len(ours); {
 		if ours[i].Checksum == them[index].Checksum {
+			have = append(have, ChunkDelta{ours[i], them[index].Offset})
 			index += 1
+			i += 1
 		} else {
 			need = append(need, them[index])
+			index += 1
 		}
 	}
-	return need
+	return need, have
 }
 
 type DataChunk struct {
