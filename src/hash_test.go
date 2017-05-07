@@ -6,8 +6,10 @@ import (
 )
 
 func TestAverage(t *testing.T) {
-	h1 := Rollhash("../tests/hashA.txt")
-	h2 := Rollhash("../tests/hashB.txt")
-	fmt.Printf("hash1: %v\n", h1)
-	fmt.Printf("hash2: %v\n", h2)
+	them := Rollhash("../tests/hashA.txt")
+	us := Rollhash("../tests/hashB.txt")
+	fmt.Printf("hash1: %v\n", them)
+	fmt.Printf("hash2: %v\n", us)
+	we_need := CompareChunks(them, us)
+	fmt.Printf("we need: %v\n", we_need)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	//	"encoding/gob"
 	"net"
 	"os"
 	"path/filepath"
@@ -64,6 +65,72 @@ func send_file(conn net.Conn, file string) bool {
 			return false
 		}
 	}
+
+	return true
+}
+
+func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
+	if len(file) > 1024 {
+		return false
+	}
+	fd, err := os.Open(file)
+	if !check(err, true) {
+		if os.IsNotExist(err) {
+			return send_delete(conn, file)
+		} else {
+			return false
+		}
+	}
+	stat, err := fd.Stat()
+	if !check(err, true) {
+		return false
+	}
+	defer fd.Close()
+
+	//send name
+	namebuf := []byte(file)
+	namebuf = append(namebuf, make([]byte, 1024-len(namebuf))...)
+	n, err := conn.Write(namebuf)
+	if n != len(namebuf) {
+		return false
+	}
+	if !check(err, true) {
+		return false
+	}
+
+	//send size
+	err = binary.Write(conn, binary.LittleEndian, stat.Size())
+	if !check(err, true) {
+		return false
+	}
+
+	//send permission bits
+	perms := int32(stat.Mode() & os.ModePerm)
+	err = binary.Write(conn, binary.LittleEndian, perms)
+	if !check(err, true) {
+		return false
+	}
+
+	//send the chunks
+	//enc := gob.NewEncoder(conn)
+	//for chunk := range Readchunks(file, chunks) {
+	//}
+
+	//send the file
+	for {
+		next := int64(0)
+		binary.Read(conn, binary.LittleEndian, &next)
+		if next == -1 {
+			break
+		}
+		buf := make([]byte, 4096)
+		amt, _ := fd.ReadAt(buf, next)
+		_, err = conn.Write(buf[0:amt])
+		if !check(err, true) {
+			return false
+		}
+	}
+
 	return true
 }
 
