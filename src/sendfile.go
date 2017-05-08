@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	//	"encoding/gob"
 	"net"
 	"os"
 	"path/filepath"
@@ -111,10 +110,19 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 		return false
 	}
 
-	//send the chunks
-	//enc := gob.NewEncoder(conn)
-	//for chunk := range Readchunks(file, chunks) {
-	//}
+	//send number of chunks
+	err = binary.Write(conn, binary.LittleEndian, int64(len(chunks)))
+	if !check(err, true) {
+		return false
+	}
+
+	//send chunks
+	for i := 0; i < len(chunks); i++ {
+		err = binary.Write(conn, binary.LittleEndian, chunks[i])
+		if !check(err, true) {
+			return false
+		}
+	}
 
 	//send the file
 	for {
@@ -223,6 +231,134 @@ func receive_file(conn net.Conn) (string, bool) {
 	}
 	done := int64(-1)
 	binary.Write(conn, binary.LittleEndian, done)
+	return filename, true
+}
+
+func receive_file_chunks(conn net.Conn) (string, bool) {
+
+	success := false
+
+	//get the name
+	filenamebuf := make([]byte, 1024)
+	n, err := conn.Read(filenamebuf)
+	DPrintf("read filename %s, len %d", string(filenamebuf), n)
+	if n != len(filenamebuf) {
+		return "", false
+	}
+	if !check(err, true) {
+		return "", false
+	}
+	filename := string(bytes.Trim(filenamebuf, "\x00"))
+
+	//get the size
+	filesz := int64(0)
+	err = binary.Read(conn, binary.LittleEndian, &filesz)
+	DPrintf("file size %v", filesz)
+	if filesz == -1 {
+		return delete_file(filename)
+	}
+	if !check(err, true) {
+		return "", false
+	}
+
+	//get the permission bits
+	perms := int32(0)
+	err = binary.Read(conn, binary.LittleEndian, &perms)
+	DPrintf("permissions %v", perms)
+	if !check(err, true) {
+		return "", false
+	}
+
+	//get num chunks
+	chunksz := int64(0)
+	err = binary.Read(conn, binary.LittleEndian, &chunksz)
+	if !check(err, true) {
+		return "", false
+	}
+
+	//get the chunks
+	chunks := make([]FileChunk, chunksz)
+	for i := int64(0); i < chunksz; i++ {
+		err = binary.Read(conn, binary.LittleEndian, &chunks[i])
+		if !check(err, true) {
+			return "", false
+		}
+	}
+	DPrintf("received chunks %v", chunks)
+
+	//make the directory path
+	dir := filepath.Dir(filename)
+	DPrintf("make dir %s", dir)
+	if !check(os.MkdirAll(dir, 0777), true) {
+		return "", false
+	}
+
+	//make the file
+	DPrintf("open file %s, len s %d", filename, len(filename))
+	//fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+	fd, err := os.OpenFile(filename+"~", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(perms))
+	if !check(err, true) {
+		return "", false
+	}
+
+	defer func() {
+		if success {
+			DPrintf("Rename %v to %v", filename+"~", filename)
+			os.Rename(filename+"~", filename)
+		}
+	}()
+
+	defer fd.Close()
+
+	chunks_wanted, recipe := ChompAlgo(chunks, Rollhash(filename))
+
+	DPrintf("chunks we want: %v\nchunks we have %v", chunks_wanted, recipe)
+	//move around the chunks we have
+	if len(recipe) > 0 {
+		oldfd, err := os.Open(filename)
+		if !check(err, true) {
+			return filename + "~", false
+		}
+		defer oldfd.Close()
+		for _, chunk := range recipe {
+			DPrintf("moving chunk %v -> %v", chunk.Chunk, chunk.Moveto)
+			buf := make([]byte, chunk.Chunk.Size)
+			for i := int64(0); i < chunk.Chunk.Size; {
+				n, err = oldfd.ReadAt(buf, chunk.Chunk.Offset+i)
+				if !check(err, true) {
+					return filename + "~", false
+				}
+				_, err = fd.WriteAt(buf[0:n], chunk.Moveto+i)
+				if !check(err, true) {
+					return filename + "~", false
+				}
+				i += int64(n)
+			}
+		}
+	}
+
+	//receive chunks we want
+	buf := make([]byte, 4096)
+	for _, chunk := range chunks_wanted {
+		DPrintf("getting chunk %v", chunk)
+		//buf := make([]byte, chunk.Size)
+		for i := int64(0); i < chunk.Size; {
+			binary.Write(conn, binary.LittleEndian, chunk.Offset+i)
+			n, err = conn.Read(buf)
+			if !check(err, true) {
+				return filename + "~", false
+			}
+			_, err := fd.WriteAt(buf[0:n], chunk.Offset+i)
+			if !check(err, true) {
+				return filename + "~", false
+			}
+			i += int64(n)
+		}
+	}
+
+	done := int64(-1)
+	binary.Write(conn, binary.LittleEndian, done)
+	success = true
 	return filename, true
 }
 

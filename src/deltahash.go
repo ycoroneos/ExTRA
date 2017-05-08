@@ -57,9 +57,54 @@ func Rollhash(filename string) []FileChunk {
 	return chunks
 }
 
+//func makechunks(filenames []Sfile) map[string][]FileChunk {
+//	output := make(map[string][]FileChunk)
+//	for _, f := range filenames {
+//		output[f.Name] = Rollhash(f.Name)
+//	}
+//	return output
+//}
+
 type ChunkDelta struct {
 	Chunk  FileChunk
 	Moveto int64
+}
+
+func ChompAlgo(them, ours []FileChunk) ([]FileChunk, []ChunkDelta) {
+	have := make([]ChunkDelta, 0)
+	need := make([]FileChunk, 0)
+	for {
+		if len(ours) == 0 || len(them) == 0 {
+			break
+		} else if (them[0].Checksum == ours[0].Checksum) && (them[0].Size == ours[0].Size) {
+			have = append(have, ChunkDelta{ours[0], them[0].Offset})
+			them = them[1:]
+			ours = ours[1:]
+		} else if len(them) > len(ours) {
+			need = append(need, them[0])
+			them = them[1:]
+		} else if len(ours) > len(them) {
+			ours = ours[1:]
+		} else if len(ours) == len(them) {
+
+			//explore both sides of the fork
+			_, havea := ChompAlgo(them[1:], ours)
+			_, haveb := ChompAlgo(them, ours[1:])
+
+			if len(havea) > len(haveb) {
+				//need = append(need, needa[0:]...)
+				//	have = append(have, havea[0:]...)
+				them = them[1:]
+			} else {
+				//		need = append(need, needb[0:]...)
+				//			have = append(have, haveb[0:]...)
+				ours = ours[1:]
+			}
+
+		}
+	}
+	need = append(need, them[0:]...)
+	return need, have
 }
 
 func CompareChunks(them, ours []FileChunk) ([]FileChunk, []ChunkDelta) {

@@ -38,13 +38,16 @@ func syncto(host string, username string, dirtree *Watcher, state map[string]Fil
 	versions := delta(modified, deleted, state)
 	//DPrintf("syncto : send version vectors, %v", versions)
 
+	//chunks := makechunks(modified)
 	//DPrintf("time-vectors: %v", sync_version)
 	wants := send_versions(conn, versions)
+	count := 0
 	for k, v := range wants {
 		if v.Send {
 			//send and sync
-			DPrintf("sending file %v", k)
-			if send_file(conn, k) {
+			DPrintf("sending file %v     -> %v%", k, float32(count)/len(wants))
+			if send_file_chunks(conn, k, Rollhash(k)) {
+				//if send_file_chunks(conn, k, v.Chunks) {
 				//update the file's synchronization vector on success
 				file := versions[k]
 				versions[k] = file.SyncModify().BackSync(username)
@@ -57,7 +60,7 @@ func syncto(host string, username string, dirtree *Watcher, state map[string]Fil
 			file := versions[k]
 			versions[k] = file.SyncModify().BackSync(username)
 		}
-
+		count += 1
 		//		if v {
 		//			DPrintf("sending file %v", k)
 		//			if send_file(conn, k) {
@@ -89,16 +92,16 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 	proposed_versions, them_id := receive_versions(from)
 	//	DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
 	//want, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_ours)
-	want, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_complain)
+	files_wanted, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_complain)
 	//DPrintf("syncfrom : request files %v", want)
-	getfiles(from, want)
+	getfiles(from, files_wanted)
 	DPrintf("syncfrom : done")
 
 	filters = make([]Sfile, 0)
 	deleted_filters = make([]Sfile, 0)
 	//receive new files and merged files
 	for {
-		newfile, good := receive_file(from)
+		newfile, good := receive_file_chunks(from)
 		if !good {
 			if newfile != "" {
 				os.Remove(newfile)
@@ -191,6 +194,8 @@ func resolve_tvpair(them, us map[string]File) map[string]bool {
 func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[string]Receive_data, []ConflictResolution) {
 	output := make(map[string]Receive_data)
 	conflict_decisions := make([]ConflictResolution, 0)
+	//chunks_wanted := make(map[string][]FileChunk, 0)
+	//chunk_recipes := make(map[string][]ChunkDelta, 0)
 	for k, v := range them {
 		_, err := os.Stat(k)
 		_, exists := us[k]
@@ -207,6 +212,10 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				output[k] = Receive_data{false, false}
 			} else if LEQ(us[k].Version, v.Sync) {
 				//output[k] = true
+				//our_chunks := Rollhash(v.Path)
+				//	needed_chunks, chunk_delta := ChompAlgo(their_chunks[v.Path], our_chunks)
+				//		chunks_wanted[v.Path] = needed_chunks
+				//		chunk_recipes[v.Path] = chunk_delta
 				output[k] = Receive_data{true, true}
 			} else {
 				DPrintf("----%v-------", v.Path)
@@ -218,7 +227,10 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				DPrintf("us sync: %v", us[k].Sync)
 				DPrintf("CONFLICT : %s", v.Path)
 				take, decision := cf(v.Path)
-				//output[k] = take
+				//our_chunks := Rollhash(v.Path)
+				//needed_chunks, chunk_delta := ChompAlgo(their_chunks[v.Path], our_chunks)
+				//chunks_wanted[v.Path] = needed_chunks
+				//chunk_recipes[v.Path] = chunk_delta
 				output[k] = Receive_data{take, true}
 				conflict_decisions = append(conflict_decisions, decision)
 				//panic("conflict detected!")
@@ -234,6 +246,7 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 			} else if !LEQ(v.Creation, us[k].Sync) {
 				//output[k] = true
 				output[k] = Receive_data{true, true}
+				//chunks_wanted[v.Path] = their_chunks[v.Path]
 			} else {
 				DPrintf("them version: %v", v.Version)
 				DPrintf("them creation: %v", v.Creation)
@@ -243,6 +256,7 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				take, decision := cf(v.Path)
 				//output[k] = take
 				output[k] = Receive_data{take, true}
+				//chunks_wanted[v.Path] = their_chunks[v.Path]
 				conflict_decisions = append(conflict_decisions, decision)
 				//panic("conflict detected")
 			}
@@ -254,6 +268,7 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 type Send_data struct {
 	From     string
 	Versions map[string]File
+	//Chunks   map[string][]FileChunk
 }
 
 type Receive_data struct {
