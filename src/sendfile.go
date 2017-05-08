@@ -8,6 +8,11 @@ import (
 	"path/filepath"
 )
 
+type ChunkPacket struct {
+	Chunk FileChunk
+	Data  []byte
+}
+
 func send_file(conn net.Conn, file string) bool {
 	if len(file) > 1024 {
 		return false
@@ -129,28 +134,49 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 		}
 	}
 
-	//send the file
-	DPrintf("send file")
+	rx := FileChunk{}
 	for {
-		next := int64(0)
-		binary.Read(conn, binary.LittleEndian, &next)
-		if next == -1 {
+		binary.Read(conn, binary.LittleEndian, &rx)
+		if rx.Size == -1 && rx.Offset == -1 {
 			break
 		}
-		if next == -2 {
+		DPrintf("got request %v ", rx)
+		buf := make([]byte, rx.Size)
+		n, _ := fd.ReadAt(buf, rx.Offset)
+		if int64(n) != rx.Size {
+			DPrintf("did not read enough")
 			return false
 		}
-		buf := make([]byte, 4096)
-		_, err = fd.Stat()
-		if !check(err, true) {
-			return false
+		for i := 0; i < n; {
+			z, _ := conn.Write(buf[i:n])
+			i += z
 		}
-		amt, err := fd.ReadAt(buf, next)
-		_, err = conn.Write(buf[0:amt])
-		if !check(err, true) {
-			return false
-		}
+		//send := ChunkPacket{rx, buf}
+		//binary.Write(conn, binary.LittleEndian, send)
 	}
+
+	//	//send the file
+	//	DPrintf("send file")
+	//	for {
+	//		next := int64(0)
+	//		binary.Read(conn, binary.LittleEndian, &next)
+	//		if next == -1 {
+	//			break
+	//		}
+	//		if next == -2 {
+	//			return false
+	//		}
+	//		buf := make([]byte, 4096)
+	//		_, err = fd.Stat()
+	//		if !check(err, true) {
+	//			return false
+	//		}
+	//		amt, err := fd.ReadAt(buf, next)
+	//		_, err = conn.Write(buf[0:amt])
+	//		if !check(err, true) {
+	//			return false
+	//		}
+	//	}
 
 	return true
 }
@@ -362,28 +388,46 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 		}
 	}
 
-	//receive chunks we want
-	DPrintf("receive the new chunks")
-	buf := make([]byte, 4096)
+	//receive our chunks
 	for _, chunk := range chunks_wanted {
-		DPrintf("getting chunk %v", chunk)
-		//buf := make([]byte, chunk.Size)
+		binary.Write(conn, binary.LittleEndian, chunk)
+		DPrintf("wait for chunk %v", chunk)
+		//data := ChunkPacket{}
 		for i := int64(0); i < chunk.Size; {
-			binary.Write(conn, binary.LittleEndian, chunk.Offset+i)
-			n, err = conn.Read(buf)
-			if !check(err, true) {
-				return filename + "~", false
-			}
-			_, err := fd.WriteAt(buf[0:n], chunk.Offset+i)
-			if !check(err, true) {
-				return filename + "~", false
-			}
-			i += int64(n)
+			buf := make([]byte, chunk.Size-i)
+			z, _ := conn.Read(buf)
+			//binary.Read(conn, binary.LittleEndian, &data)
+			//DPrintf("got something", chunk)
+			fd.WriteAt(buf[0:z], chunk.Offset+i)
+			i += int64(z)
 		}
 	}
-	//clear out the buffer
 
-	done := int64(-1)
+	//	//receive chunks we want
+	//	DPrintf("receive the new chunks")
+	//	buf := make([]byte, 4096)
+	//	for _, chunk := range chunks_wanted {
+	//		DPrintf("getting chunk %v", chunk)
+	//		//buf := make([]byte, chunk.Size)
+	//		for i := int64(0); i < chunk.Size; {
+	//			binary.Write(conn, binary.LittleEndian, chunk.Offset+i)
+	//			n, err = conn.Read(buf)
+	//			if !check(err, true) {
+	//				return filename + "~", false
+	//			}
+	//			_, err := fd.WriteAt(buf[0:n], chunk.Offset+i)
+	//			if !check(err, true) {
+	//				return filename + "~", false
+	//			}
+	//			i += int64(n)
+	//		}
+	//	}
+	//	//clear out the buffer
+
+	//	done := int64(-1)
+	//	binary.Write(conn, binary.LittleEndian, done)
+
+	done := FileChunk{-1, 0, -1}
 	binary.Write(conn, binary.LittleEndian, done)
 	success = true
 	return filename, true
