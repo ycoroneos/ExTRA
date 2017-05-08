@@ -366,7 +366,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	DPrintf("receive the new chunks")
 	buf := make([]byte, 4096)
 	for _, chunk := range chunks_wanted {
-		//DPrintf("getting chunk %v", chunk)
+		DPrintf("getting chunk %v", chunk)
 		//buf := make([]byte, chunk.Size)
 		for i := int64(0); i < chunk.Size; {
 			binary.Write(conn, binary.LittleEndian, chunk.Offset+i)
@@ -381,6 +381,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 			i += int64(n)
 		}
 	}
+	//clear out the buffer
 
 	done := int64(-1)
 	binary.Write(conn, binary.LittleEndian, done)
