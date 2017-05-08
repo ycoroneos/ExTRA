@@ -56,6 +56,7 @@ func syncto(host string, username string, dirtree *Watcher, state map[string]Fil
 				break
 			}
 		} else if v.Sync {
+			DPrintf("just sync %v", k)
 			//just sync but dont send
 			file := versions[k]
 			versions[k] = file.SyncModify().BackSync(username)
@@ -231,7 +232,11 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				//needed_chunks, chunk_delta := ChompAlgo(their_chunks[v.Path], our_chunks)
 				//chunks_wanted[v.Path] = needed_chunks
 				//chunk_recipes[v.Path] = chunk_delta
-				output[k] = Receive_data{take, true}
+				if decision.Resolution == NONE {
+					output[k] = Receive_data{take, false}
+				} else {
+					output[k] = Receive_data{take, true}
+				}
 				conflict_decisions = append(conflict_decisions, decision)
 				//panic("conflict detected!")
 			}
@@ -255,7 +260,12 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				//output[k] = false
 				take, decision := cf(v.Path)
 				//output[k] = take
-				output[k] = Receive_data{take, true}
+				if decision.Resolution == NONE {
+					output[k] = Receive_data{take, false}
+				} else {
+					output[k] = Receive_data{take, true}
+				}
+				//output[k] = Receive_data{take, true}
 				//chunks_wanted[v.Path] = their_chunks[v.Path]
 				conflict_decisions = append(conflict_decisions, decision)
 				//panic("conflict detected")
