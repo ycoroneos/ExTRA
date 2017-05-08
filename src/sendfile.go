@@ -87,6 +87,7 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	defer fd.Close()
 
 	//send name
+	DPrintf("send name")
 	namebuf := []byte(file)
 	namebuf = append(namebuf, make([]byte, 1024-len(namebuf))...)
 	n, err := conn.Write(namebuf)
@@ -98,12 +99,14 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	}
 
 	//send size
+	DPrintf("send size")
 	err = binary.Write(conn, binary.LittleEndian, stat.Size())
 	if !check(err, true) {
 		return false
 	}
 
 	//send permission bits
+	DPrintf("send permissions")
 	perms := int32(stat.Mode() & os.ModePerm)
 	err = binary.Write(conn, binary.LittleEndian, perms)
 	if !check(err, true) {
@@ -111,12 +114,14 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	}
 
 	//send number of chunks
+	DPrintf("send nchunks")
 	err = binary.Write(conn, binary.LittleEndian, int64(len(chunks)))
 	if !check(err, true) {
 		return false
 	}
 
 	//send chunks
+	DPrintf("send chunks")
 	for i := 0; i < len(chunks); i++ {
 		err = binary.Write(conn, binary.LittleEndian, chunks[i])
 		if !check(err, true) {
@@ -125,14 +130,22 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	}
 
 	//send the file
+	DPrintf("send file")
 	for {
 		next := int64(0)
 		binary.Read(conn, binary.LittleEndian, &next)
 		if next == -1 {
 			break
 		}
+		if next == -2 {
+			return false
+		}
 		buf := make([]byte, 4096)
-		amt, _ := fd.ReadAt(buf, next)
+		_, err = fd.Stat()
+		if !check(err, true) {
+			return false
+		}
+		amt, err := fd.ReadAt(buf, next)
 		_, err = conn.Write(buf[0:amt])
 		if !check(err, true) {
 			return false
@@ -165,6 +178,7 @@ func send_delete(conn net.Conn, file string) bool {
 func receive_file(conn net.Conn) (string, bool) {
 
 	//get the name
+	DPrintf("get new file name")
 	filenamebuf := make([]byte, 1024)
 	n, err := conn.Read(filenamebuf)
 	DPrintf("read filename %s, len %d", string(filenamebuf), n)
@@ -177,6 +191,7 @@ func receive_file(conn net.Conn) (string, bool) {
 	filename := string(bytes.Trim(filenamebuf, "\x00"))
 
 	//get the size
+	DPrintf("get new file size")
 	filesz := int64(0)
 	err = binary.Read(conn, binary.LittleEndian, &filesz)
 	DPrintf("file size %v", filesz)
@@ -239,6 +254,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	success := false
 
 	//get the name
+	DPrintf("get the filename")
 	filenamebuf := make([]byte, 1024)
 	n, err := conn.Read(filenamebuf)
 	DPrintf("read filename %s, len %d", string(filenamebuf), n)
@@ -284,7 +300,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 			return "", false
 		}
 	}
-	DPrintf("received chunks %v", chunks)
+	//DPrintf("received chunks %v", chunks)
 
 	//make the directory path
 	dir := filepath.Dir(filename)
@@ -310,18 +326,27 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 
 	defer fd.Close()
 
-	chunks_wanted, recipe := ChompAlgo(chunks, Rollhash(filename))
+	chunks_wanted := chunks
+	recipe := make([]ChunkDelta, 0)
+	if filesz > (1024 * 10 * 10) {
+		DPrintf("compute rolling hash")
+		hash := FastRollhash(filename)
+		//DPrintf("done rolling hash, start chompalgo with %v %v", chunks, hash)
+		chunks_wanted, recipe = Diff(chunks, hash)
+		DPrintf("done chompalgo")
+	}
 
-	DPrintf("chunks we want: %v\nchunks we have %v", chunks_wanted, recipe)
+	//DPrintf("chunks we want: %v\nchunks we have %v", chunks_wanted, recipe)
 	//move around the chunks we have
 	if len(recipe) > 0 {
+		DPrintf("move the old chunks")
 		oldfd, err := os.Open(filename)
 		if !check(err, true) {
 			return filename + "~", false
 		}
 		defer oldfd.Close()
 		for _, chunk := range recipe {
-			DPrintf("moving chunk %v -> %v", chunk.Chunk, chunk.Moveto)
+			//DPrintf("moving chunk %v -> %v", chunk.Chunk, chunk.Moveto)
 			buf := make([]byte, chunk.Chunk.Size)
 			for i := int64(0); i < chunk.Chunk.Size; {
 				n, err = oldfd.ReadAt(buf, chunk.Chunk.Offset+i)
@@ -338,9 +363,10 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	}
 
 	//receive chunks we want
+	DPrintf("receive the new chunks")
 	buf := make([]byte, 4096)
 	for _, chunk := range chunks_wanted {
-		DPrintf("getting chunk %v", chunk)
+		//DPrintf("getting chunk %v", chunk)
 		//buf := make([]byte, chunk.Size)
 		for i := int64(0); i < chunk.Size; {
 			binary.Write(conn, binary.LittleEndian, chunk.Offset+i)
