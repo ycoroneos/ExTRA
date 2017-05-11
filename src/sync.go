@@ -15,10 +15,6 @@ func syncmaker(events chan Event, timeout time.Duration, hosts map[string]string
 		for k, v := range hosts {
 			events <- Event{Type: EVENT_SYNCTO, Host: v, Username: k, From: ID}
 		}
-		//	for i := 0; i < len(hosts); i++ {
-		//		//try to sync to to host
-		//		events <- Event{Type: EVENT_SYNCTO, Host: hosts[i], From: ID}
-		//	}
 	}
 }
 
@@ -62,21 +58,8 @@ func syncto(host string, username string, dirtree *Watcher, state map[string]Fil
 			versions[k] = file.SyncModify().BackSync(username)
 		}
 		count += 1
-		//		if v {
-		//			DPrintf("sending file %v", k)
-		//			if send_file(conn, k) {
-		//				//update the file's synchronization vector on success
-		//				file := versions[k]
-		//				versions[k] = file.SyncModify()
-		//			} else {
-		//				DPrintf("the file did not send")
-		//				break
-		//			}
-		//			//	}
-		//		}
 	}
 	DPrintf("syncto : done sending files")
-	//send_done(conn)
 	return versions
 }
 
@@ -92,8 +75,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 	DPrintf("syncfrom : received their versions")
 	proposed_versions, them_id := receive_versions(from)
 	//	DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
-	//want, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_ours)
-	files_wanted, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_complain)
+	files_wanted, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_merge)
 	//DPrintf("syncfrom : request files %v", want)
 	getfiles(from, files_wanted)
 	DPrintf("syncfrom : done")
@@ -102,13 +84,25 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 	deleted_filters = make([]Sfile, 0)
 	//receive new files and merged files
 	for {
-		newfile, good := receive_file_chunks(from)
+		newfile, good, rename := receive_file_chunks(from)
 		if !good {
 			if newfile != "" {
 				os.Remove(newfile)
 			}
 			break
 		}
+		merged := false
+		//DPrintf("%v", resolutions)
+		val, exists := resolutions[newfile]
+		if exists && val.Resolution == MERGE {
+			merged = merge(newfile, newfile+"~")
+			if !merged {
+				break
+			}
+		} else {
+			rename()
+		}
+
 		DPrintf("got file %v", newfile)
 		file := proposed_versions[newfile]
 		nfo, err := os.Stat(newfile)
@@ -119,7 +113,11 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 			//update the synchronization vector in the file
 
 			//stick it in the map
-			versions[newfile] = file.BackSync(them_id).SyncModify()
+			if merged {
+				versions[newfile] = file.BackSync(them_id).SyncModify().Modify()
+			} else {
+				versions[newfile] = file.BackSync(them_id).SyncModify()
+			}
 			filters = append(filters, Sfile{file.Path, file.Time, false})
 		} else if os.IsNotExist(err) {
 			//fix up time in the new file
@@ -138,23 +136,24 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 	}
 
 	for _, c := range resolutions {
-		if c.Resolution == MERGE {
-			//update version vector for merges
-			merged := merge(c.Filename)
-			if !merged {
-				//dont merge if something went wrong
-				continue
-			}
-			modTime, good := getmodtime(c.Filename)
-			if !good {
-				continue
-			}
-			file := versions[c.Filename]
-			file.Time = modTime
-			file = file.Modify()
-			versions[c.Filename] = file
-			filters = append(filters, Sfile{file.Path, file.Time, false})
-		} else if c.Resolution == KEEP_OURS {
+		//		if c.Resolution == MERGE {
+		//			//update version vector for merges
+		//			merged := merge(c.Filename)
+		//			if !merged {
+		//				//dont merge if something went wrong
+		//				continue
+		//			}
+		//			modTime, good := getmodtime(c.Filename)
+		//			if !good {
+		//				continue
+		//			}
+		//			file := versions[c.Filename]
+		//			file.Time = modTime
+		//			file = file.Modify()
+		//			versions[c.Filename] = file
+		//			filters = append(filters, Sfile{file.Path, file.Time, false})
+		//		} else if c.Resolution == KEEP_OURS {
+		if c.Resolution == KEEP_OURS {
 			//update sync vector for conflicts we keep
 			file := versions[c.Filename]
 			versions[c.Filename] = file.BackSync(them_id).SyncModify()
@@ -192,9 +191,10 @@ func resolve_tvpair(them, us map[string]File) map[string]bool {
 	return output
 }
 
-func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[string]Receive_data, []ConflictResolution) {
+func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[string]Receive_data, map[string]ConflictResolution) {
 	output := make(map[string]Receive_data)
-	conflict_decisions := make([]ConflictResolution, 0)
+	//conflict_decisions := make([]ConflictResolution, 0)
+	conflict_decisions := make(map[string]ConflictResolution, 0)
 	//chunks_wanted := make(map[string][]FileChunk, 0)
 	//chunk_recipes := make(map[string][]ChunkDelta, 0)
 	for k, v := range them {
@@ -237,7 +237,8 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				} else {
 					output[k] = Receive_data{take, true}
 				}
-				conflict_decisions = append(conflict_decisions, decision)
+				//conflict_decisions = append(conflict_decisions, decision)
+				conflict_decisions[k] = decision
 				//panic("conflict detected!")
 			}
 		} else {
@@ -267,7 +268,8 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				}
 				//output[k] = Receive_data{take, true}
 				//chunks_wanted[v.Path] = their_chunks[v.Path]
-				conflict_decisions = append(conflict_decisions, decision)
+				//conflict_decisions = append(conflict_decisions, decision)
+				conflict_decisions[k] = decision
 				//panic("conflict detected")
 			}
 		}

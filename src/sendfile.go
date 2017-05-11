@@ -275,9 +275,9 @@ func receive_file(conn net.Conn) (string, bool) {
 	return filename, true
 }
 
-func receive_file_chunks(conn net.Conn) (string, bool) {
+func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 
-	success := false
+	//success := false
 
 	//get the name
 	DPrintf("get the filename")
@@ -285,10 +285,10 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	n, err := conn.Read(filenamebuf)
 	DPrintf("read filename %s, len %d", string(filenamebuf), n)
 	if n != len(filenamebuf) {
-		return "", false
+		return "", false, nil
 	}
 	if !check(err, true) {
-		return "", false
+		return "", false, nil
 	}
 	filename := string(bytes.Trim(filenamebuf, "\x00"))
 
@@ -297,10 +297,11 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	err = binary.Read(conn, binary.LittleEndian, &filesz)
 	DPrintf("file size %v", filesz)
 	if filesz == -1 {
-		return delete_file(filename)
+		a, b := delete_file(filename)
+		return a, b, func() {}
 	}
 	if !check(err, true) {
-		return "", false
+		return "", false, nil
 	}
 
 	//get the permission bits
@@ -308,14 +309,14 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	err = binary.Read(conn, binary.LittleEndian, &perms)
 	DPrintf("permissions %v", perms)
 	if !check(err, true) {
-		return "", false
+		return "", false, nil
 	}
 
 	//get num chunks
 	chunksz := int64(0)
 	err = binary.Read(conn, binary.LittleEndian, &chunksz)
 	if !check(err, true) {
-		return "", false
+		return "", false, nil
 	}
 
 	//get the chunks
@@ -323,7 +324,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	for i := int64(0); i < chunksz; i++ {
 		err = binary.Read(conn, binary.LittleEndian, &chunks[i])
 		if !check(err, true) {
-			return "", false
+			return "", false, nil
 		}
 	}
 	//DPrintf("received chunks %v", chunks)
@@ -332,7 +333,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	dir := filepath.Dir(filename)
 	DPrintf("make dir %s", dir)
 	if !check(os.MkdirAll(dir, 0777), true) {
-		return "", false
+		return "", false, nil
 	}
 
 	//make the file
@@ -340,15 +341,15 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 	//fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
 	fd, err := os.OpenFile(filename+"~", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(perms))
 	if !check(err, true) {
-		return "", false
+		return "", false, nil
 	}
 
-	defer func() {
-		if success {
-			DPrintf("Rename %v to %v", filename+"~", filename)
-			os.Rename(filename+"~", filename)
-		}
-	}()
+	//	defer func() {
+	//		if success {
+	//			DPrintf("Rename %v to %v", filename+"~", filename)
+	//			os.Rename(filename+"~", filename)
+	//		}
+	//	}()
 
 	defer fd.Close()
 
@@ -368,7 +369,7 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 		DPrintf("move the old chunks")
 		oldfd, err := os.Open(filename)
 		if !check(err, true) {
-			return filename + "~", false
+			return filename + "~", false, nil
 		}
 		defer oldfd.Close()
 		for _, chunk := range recipe {
@@ -377,11 +378,11 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 			for i := int64(0); i < chunk.Chunk.Size; {
 				n, err = oldfd.ReadAt(buf, chunk.Chunk.Offset+i)
 				if !check(err, true) {
-					return filename + "~", false
+					return filename + "~", false, nil
 				}
 				_, err = fd.WriteAt(buf[0:n], chunk.Moveto+i)
 				if !check(err, true) {
-					return filename + "~", false
+					return filename + "~", false, nil
 				}
 				i += int64(n)
 			}
@@ -429,8 +430,12 @@ func receive_file_chunks(conn net.Conn) (string, bool) {
 
 	done := FileChunk{-1, 0, -1}
 	binary.Write(conn, binary.LittleEndian, done)
-	success = true
-	return filename, true
+	//success = true
+	rename := func() {
+		DPrintf("Rename %v to %v", filename+"~", filename)
+		os.Rename(filename+"~", filename)
+	}
+	return filename, true, rename
 }
 
 func delete_file(filename string) (string, bool) {

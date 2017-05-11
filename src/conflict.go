@@ -45,14 +45,14 @@ func resolution_complain(filename string) (bool, ConflictResolution) {
 
 //fake merge function
 //just appends a MERGE message to the top
-func merge(filename string) bool {
+func merge(filename, newfilename string) bool {
 
 	merged := false
 
 	//defer the move from new to original
 	defer func() {
 		if merged {
-			os.Rename(filename+"_merging", filename)
+			os.Rename(newfilename, filename)
 		}
 	}()
 
@@ -66,20 +66,40 @@ func merge(filename string) bool {
 	if !check(err, true) {
 		return false
 	}
-	//make the copy
-	perms := int32(stat.Mode() & os.ModePerm)
-	nfile, err := os.OpenFile(filename+"_merging", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(perms))
+
+	//open the new one
+	fd2, err := os.OpenFile(newfilename, os.O_RDWR|os.O_APPEND, stat.Mode()&os.ModePerm)
 	if !check(err, true) {
 		return false
 	}
-	defer nfile.Close()
-	nfile.Write([]byte("MERGED\n"))
-	_, err = io.Copy(nfile, fd)
+	defer fd2.Close()
+	//	stat2, err := fd2.Stat()
+	//	if !check(err, true) {
+	//		return false
+	//	}
+
+	fd2.Write([]byte("+++++MERGE+++++"))
+	_, err = io.Copy(fd2, fd)
 	if !check(err, true) {
 		return false
 	}
 	merged = true
 	return merged
+
+	//	//make the copy
+	//	perms := int32(stat.Mode() & os.ModePerm)
+	//	nfile, err := os.OpenFile(filename+"_merging", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(perms))
+	//	if !check(err, true) {
+	//		return false
+	//	}
+	//	defer nfile.Close()
+	//	nfile.Write([]byte("MERGED\n"))
+	//	_, err = io.Copy(nfile, fd)
+	//	if !check(err, true) {
+	//		return false
+	//	}
+	//	merged = true
+	//	return merged
 }
 
 func getmodtime(filename string) (time.Time, bool) {
