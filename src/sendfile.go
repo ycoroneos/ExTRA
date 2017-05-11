@@ -92,7 +92,7 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	defer fd.Close()
 
 	//send name
-	DPrintf("send name")
+	//DPrintf("send name")
 	namebuf := []byte(file)
 	namebuf = append(namebuf, make([]byte, 1024-len(namebuf))...)
 	n, err := conn.Write(namebuf)
@@ -104,14 +104,14 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	}
 
 	//send size
-	DPrintf("send size")
+	//DPrintf("send size")
 	err = binary.Write(conn, binary.LittleEndian, stat.Size())
 	if !check(err, true) {
 		return false
 	}
 
 	//send permission bits
-	DPrintf("send permissions")
+	//DPrintf("send permissions")
 	perms := int32(stat.Mode() & os.ModePerm)
 	err = binary.Write(conn, binary.LittleEndian, perms)
 	if !check(err, true) {
@@ -119,14 +119,14 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 	}
 
 	//send number of chunks
-	DPrintf("send nchunks")
+	//DPrintf("send nchunks")
 	err = binary.Write(conn, binary.LittleEndian, int64(len(chunks)))
 	if !check(err, true) {
 		return false
 	}
 
 	//send chunks
-	DPrintf("send chunks")
+	//DPrintf("send chunks")
 	for i := 0; i < len(chunks); i++ {
 		err = binary.Write(conn, binary.LittleEndian, chunks[i])
 		if !check(err, true) {
@@ -140,7 +140,7 @@ func send_file_chunks(conn net.Conn, file string, chunks []FileChunk) bool {
 		if rx.Size == -1 && rx.Offset == -1 {
 			break
 		}
-		DPrintf("got request %v ", rx)
+		//DPrintf("got request %v ", rx)
 		buf := make([]byte, rx.Size)
 		n, _ := fd.ReadAt(buf, rx.Offset)
 		if int64(n) != rx.Size {
@@ -280,10 +280,10 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	//success := false
 
 	//get the name
-	DPrintf("get the filename")
+	//DPrintf("get the filename")
 	filenamebuf := make([]byte, 1024)
 	n, err := conn.Read(filenamebuf)
-	DPrintf("read filename %s, len %d", string(filenamebuf), n)
+	//DPrintf("read filename %s, len %d", string(filenamebuf), n)
 	if n != len(filenamebuf) {
 		return "", false, nil
 	}
@@ -295,7 +295,7 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	//get the size
 	filesz := int64(0)
 	err = binary.Read(conn, binary.LittleEndian, &filesz)
-	DPrintf("file size %v", filesz)
+	//DPrintf("file size %v", filesz)
 	if filesz == -1 {
 		a, b := delete_file(filename)
 		return a, b, func() {}
@@ -307,7 +307,7 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	//get the permission bits
 	perms := int32(0)
 	err = binary.Read(conn, binary.LittleEndian, &perms)
-	DPrintf("permissions %v", perms)
+	//DPrintf("permissions %v", perms)
 	if !check(err, true) {
 		return "", false, nil
 	}
@@ -331,13 +331,13 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 
 	//make the directory path
 	dir := filepath.Dir(filename)
-	DPrintf("make dir %s", dir)
+	//DPrintf("make dir %s", dir)
 	if !check(os.MkdirAll(dir, 0777), true) {
 		return "", false, nil
 	}
 
 	//make the file
-	DPrintf("open file %s, len s %d", filename, len(filename))
+	//DPrintf("open file %s, len s %d", filename, len(filename))
 	//fd, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
 	fd, err := os.OpenFile(filename+"~", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(perms))
 	if !check(err, true) {
@@ -356,17 +356,17 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	chunks_wanted := chunks
 	recipe := make([]ChunkDelta, 0)
 	if filesz > (1024 * 10 * 10) {
-		DPrintf("compute rolling hash")
+		//DPrintf("compute rolling hash")
 		hash := FastRollhash(filename)
 		//DPrintf("done rolling hash, start chompalgo with %v %v", chunks, hash)
 		chunks_wanted, recipe = Diff(chunks, hash)
-		DPrintf("done chompalgo")
+		//DPrintf("done chompalgo")
 	}
 
 	//DPrintf("chunks we want: %v\nchunks we have %v", chunks_wanted, recipe)
 	//move around the chunks we have
 	if len(recipe) > 0 {
-		DPrintf("move the old chunks")
+		//DPrintf("move the old chunks")
 		oldfd, err := os.Open(filename)
 		if !check(err, true) {
 			return filename + "~", false, nil
@@ -392,7 +392,7 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	//receive our chunks
 	for _, chunk := range chunks_wanted {
 		binary.Write(conn, binary.LittleEndian, chunk)
-		DPrintf("wait for chunk %v", chunk)
+		//DPrintf("wait for chunk %v", chunk)
 		//data := ChunkPacket{}
 		for i := int64(0); i < chunk.Size; {
 			buf := make([]byte, chunk.Size-i)

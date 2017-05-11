@@ -75,7 +75,7 @@ func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, d
 	DPrintf("syncfrom : received their versions")
 	proposed_versions, them_id := receive_versions(from)
 	//	DPrintf("syncfrom : resolve differences: \n\tus %v\n\tthem %v", versions, proposed_versions)
-	files_wanted, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_merge)
+	files_wanted, resolutions := resolve_tvpair_with_delete(proposed_versions, versions, resolution_complain)
 	//DPrintf("syncfrom : request files %v", want)
 	getfiles(from, files_wanted)
 	DPrintf("syncfrom : done")
@@ -254,23 +254,28 @@ func resolve_tvpair_with_delete(them, us map[string]File, cf conflictF) (map[str
 				output[k] = Receive_data{true, true}
 				//chunks_wanted[v.Path] = their_chunks[v.Path]
 			} else {
-				DPrintf("them version: %v", v.Version)
-				DPrintf("them creation: %v", v.Creation)
-				DPrintf("us sync: %v", us[k].Sync)
-				DPrintf("CONFLICT : %s", v.Path)
-				//output[k] = false
-				take, decision := cf(v.Path)
-				//output[k] = take
-				if decision.Resolution == NONE {
-					output[k] = Receive_data{take, false}
+				if us[k].Deleted && v.Deleted {
+					//all deletions are created equal
+					output[k] = Receive_data{false, true}
 				} else {
-					output[k] = Receive_data{take, true}
+					DPrintf("them version: %v", v.Version)
+					DPrintf("them creation: %v", v.Creation)
+					DPrintf("us sync: %v", us[k].Sync)
+					DPrintf("CONFLICT : %s", v.Path)
+					//output[k] = false
+					take, decision := cf(v.Path)
+					//output[k] = take
+					if decision.Resolution == NONE {
+						output[k] = Receive_data{take, false}
+					} else {
+						output[k] = Receive_data{take, true}
+					}
+					//output[k] = Receive_data{take, true}
+					//chunks_wanted[v.Path] = their_chunks[v.Path]
+					//conflict_decisions = append(conflict_decisions, decision)
+					conflict_decisions[k] = decision
+					//panic("conflict detected")
 				}
-				//output[k] = Receive_data{take, true}
-				//chunks_wanted[v.Path] = their_chunks[v.Path]
-				//conflict_decisions = append(conflict_decisions, decision)
-				conflict_decisions[k] = decision
-				//panic("conflict detected")
 			}
 		}
 	}
