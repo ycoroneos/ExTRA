@@ -1,12 +1,46 @@
 # ExTRA
 A re-implementation of the [TRA file synchronizer](http://publications.csail.mit.edu/lcs/pubs/pdf/MIT-LCS-TM-650.pdf) in go
+with some extra tweaks
 
 ## How To Use
 First write a JSON config file like the samples in config/
 Then run extra out of the sync directory and pass in the config path:
 
 
-path/to/extra/extra.elf path/to/config.cfg
+user@host:~/some/path/to/sync$ path/to/extra/extra.elf path/to/config.cfg
+
+
+## Features
+### False conflict detection:
+Independently creating files with the same
+name, when one of them has already been deleted, will not report a conflict.
+Synchronization of two deleted files will never report a conflict.
+Conflicts that are resolved by keeping an old version will never be
+reported again unless the conflicting files change again.
+
+### No Lost Updates
+The updates to a file will not be lost because another participant
+in the network has rejected a conflict.
+
+### Incremental change propogation:
+Only new parts of a file are sent over
+the wire.
+
+### Persistence:
+Synchronization state is saved and loaded from disk on
+startup.
+
+### Efficient File Representation:
+The size of the persisted state scales
+linearly with the number of files that are being synchronized. A tree
+with 22000 files must only maintain about 20 MB of state.
+
+### Time Invariance
+Computer wall clock time is not involved in the synchronization at all.
+
+### Portability:
+ExTRA is 100% written in Go and the only non-standard package is golang-set
+
 
 ## How It works
 In order to better track file history, Tra uses synchonization vectors
