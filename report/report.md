@@ -5,6 +5,7 @@
 |Core Version Tracking|
 |File System Monitoring|
 |Chunked File Transfer|
+|Implementation Specific Details|
 
 
 # System Design
@@ -14,8 +15,8 @@ directory, a core version tracking algorithm that uses both version
 vectors and synchronization vectors, and finally a chunked file transfer
 protocol which only transmits different chunks. Upon receiving a sync
 event, Extra prepares a change list of every file it tracks. It either
-sends the changelist to the receiver or it compares its changelist with
-the sender in order to determine which files to synchronize.
+sends the change list to the receiver or it compares its change list with
+the sender's in order to determine which files to synchronize.
 
 # Core Version Tracking
 
@@ -333,6 +334,13 @@ children. When a directory's synchronization time on one computer is
 greater than its modification time on another, then synchronization of
 the whole subtree can be skipped.
 
+Extra does not track directory entries for two reasons. The first reason is
+that Extra uses change lists to speed up a sync. Change lists avoid the
+TCP ping pong that occurs when Tra walks the directory tree over the
+network. The second reason is because empty directories seem like a
+useless thing to synchronize between computers. In Extra, every
+non-empty directory will get implicitly sync'ed along with its files.
+
 
 Optimizations to Reduce Metadata Storage Cost and Synchroniation Time
 ------------------------------------------------------------------------
@@ -361,6 +369,31 @@ determines which directories to sync, Extra packages all of its version
 vectors and synchronization vectors and sends them to the receiver in a
 single network transfer. Then the receiver responds with which files it
 wants.
+
+With these cost optimizations, Extra's state size is able to scale linearly with the
+number of files that are being synchronized. I took some measurements,
+just to be sure though. All of the files in the table below are *newly
+created* and then synced once. This means that their version vectors are
+unit size and so are the synchronization vectors. Since Extra does not
+care about the file contents, that data does not factor into the storage
+size (unlike git).
+
+|# Files| Stored size|
+|-------|------------|
+|10     |4kb         |
+|20     |4kb         |
+|40     |8kb         |
+|80     |16kb        |
+|100    |20kb        |
+|400    |72kb        |
+|800    |144kb       |
+|2000   |356kb       |
+|5000   |896kb       |
+|10000  |1.8MB       |
+|100000 |18MB        |
+
+It looks very linear, the plot confirms it.
+![Size Graph](graph.png)
 
 # File System Monitoring
 
@@ -412,27 +445,30 @@ sync. This way, modifications made by the user while the file
 synchronizer was offline are picked up.
 
 
+
 # Chunked File Transfer
 
 Rolling Hash
 -----------------------
-![Rolling Sum Hash](math.svg)
+<!--![Rolling Sum Hash](math.svg) -->
 
-![Rolling Sum Hash2](math2.svg)
+<!--![Rolling Sum Hash2](math2.svg) -->
 
 
 When Extra is synchronizing a huge file, only the parts of it that have
 changed should be transferred over the wire. In order to do this, Extra
-uses a rolling hash algorithm just like Rsync. During a file transfer,
-each participant computes an 8kb rolling sum of the bytes in their
-file. Every time the rolling sum becomes a multiple of 4096, the input
-file is cut at that point, producing a file chunk. The math function is shown above.
-For each chunk, the file offset, hash
-value, and chunk size are recorded in a list. Cut lists
-for identical files are identical. In fact comparing these cut lists
-yields the equal chunks for two different files. Two files that differ
-by a single insertion will only differ at two cutpoints in the cutlist.
-The cut points of two equal files are shown below:
+uses an adler32 rolling hash algorithm just like Rsync. In this algorithm, the
+current value of the rolling hash is used to produce a cut point in the
+file everytime the hash becomes a multiple of 65521. Since the hash
+function is just a moving sum, re-calculating its value for the current
+byte is very fast: subtract the oldest byte from the sum and add the
+newest byte. During a file
+transfer, the sender sends its file chunks to the receiver and the
+receiver compares them to its own chunks.
+
+
+Chunk Comparison
+----------------------
 
 <!-- language: lang-none -->
     File A
@@ -440,17 +476,20 @@ The cut points of two equal files are shown below:
     |    |     |   |     |  |
     |    |     |   |     |  |
     +-------------------------
+    0                        n
 
     File B
     +-------------------------
     |    |     |   |     |  |
     |    |     |   |     |  |
     +-------------------------
+    0                        n
 
+Shown above is the cutlist of two identical files. Vertical bars
+represent a cut. Since the files are identical, the rolling hash mod
+65521 will equal zero at all the same spots. Lets see what happens if
+file A acquires an insertion somewhere in the middle:
 
-Files A and B are identical so they have an equal cut list. Now suppose
-that a single byte was inserted into A somehwere in the middle. The new
-cutlists of files A and B will look like:
 <!-- language: lang-none -->
     File A
     +-------------------------
@@ -463,37 +502,76 @@ cutlists of files A and B will look like:
     |    |     |   |     |  |
     |    |     |   |     |  |
     +-------------------------
-
 
 The cut lists lose alignment near the location of the insertion but then
 they become aligned again away from the insertion. The length of misalignment in the cut lists
-is due to the window size of the rolling hash. The rolling window of the
+is due to the window size of the rolling hash. The rolling hash of the
 two files will only differ during the time in which the insertion is
 moving through the window. Eventually it will leave, and the rolling
-windows of the files will match again and produce equal hashes and cutpoints.
+hashes of the files will match again and produce equal cutpoints.
 
-Rolling Hash Collisions
---------------------------
+In order to uniquely identify each chunk, though, Extra needs one more
+piece of information. Extra uses a very small window size for the
+adler32 rolling hash function so it is very likely that the rolling
+hashes of two unrelated chunks will equal each other. Hence, it is only
+OK to use the rolling hash to determine chunk inequality. Extra extends
+the information in a chunk with the SHA256 hash of all the bytes that
+comprise the chunk. With the stronger SHA256 hash, false positives can
+be detected much more reliably.
 
+
+
+Chunk Assembly
+---------------------
 <!-- language: lang-none -->
     type FileChunk struct {
     	Offset   int64
-    	Checksum uint32
+    	Checksum uint64
     	Size     int64
+    	Sha      [32]byte
     }
 
-It is unreasonable to expect that every cut point in a file will have a
-unique rolling hash because mod 4096 does not leave very many options
-for an 8kb rolling sum. To drive down the probability of a file chunk
-collision, the size of the chunk is also stored. This way, colliding
-chunks need to have the same rolling hash and chunk size. In case this
-is not good enough, each chunk can also store the SHA256 hash of its
-data, but Extra does not currently do this.
+During a file transfer, the receiver compares its chunks with those of
+the sender to determine which ones it needs. The chunk struct definition
+is shown above. A list of []FileChunk contains all of the information
+necessary to find incremental differences in a file. Extra does this one
+way with the pseudocode below
 
-Chunk Assembly
------------------
-During the file transfer, the sender sends all of its file chunks to the
-reciever. The receiver then computes its list of chunks and it performs a
-linear search over the sender's chunks to decide which ones it already has and
-which ones it should request. Then the receiver assembles the new file
-by reading chunks out of the old file and from the network.
+<!-- language: lang-none -->
+    func Diff(them, ours []FileChunk) ([]FileChunk, ([]FileChunk, Offset)) :
+    //first put our chunks into a map to speed up search
+    table=new map
+    for chunk in ours:
+     table[ours.checksum] += chunk
+
+    //next loop over their chunks
+    for chunk in them:
+      if exists(table[chunk.checksum]) && chunk.Sha == table[chunk.checksum].Sha :
+        //record that we have the chunk and also its new offset (if different)
+        have+=(table[chunk.checksum], chunk.Offset)
+      else:
+        need+=chunk
+
+After running this search algorithm, the receiver has a list of chunks
+that it can request and a different list of chunks that it needs to move
+around.
+
+# Implementation Specific Details
+This section aims to describe the coding patterns that are present in
+Extra. It is probably only useful for contributing.
+
+Pairwaise Synchronizing
+--------------------------
+
+There are only two synchronization functions in Extra:
+<!-- language: lang-none -->
+    //sync an entire path to a remote
+    func syncto(host string, username string, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile, persist persistfunc) map[string]File
+    func syncfrom(from net.Conn, dirtree *Watcher, state map[string]File, filters, deleted_filters []Sfile, persist persistfunc) (map[string]File, []Sfile, []Sfile)
+
+Syncto takes the hostname to sync to , the username of that host, the
+current state, and a directory tree monitor. It attempts to contact the
+remote host and complete the synchronization. On the receiving end, syncfrom is called with a handle to sender and
+also the current state of the receiver. In order to register sync
+events, Extra listens on a port and puts events into the event loop
+whenever a host is trying to connect and sync.
