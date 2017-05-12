@@ -357,7 +357,8 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	recipe := make([]ChunkDelta, 0)
 	if filesz > (1024 * 10 * 10) {
 		//DPrintf("compute rolling hash")
-		hash := FastRollhash(filename)
+		//hash := FastRollhash(filename)
+		hash := RollhashSha(filename)
 		//DPrintf("done rolling hash, start chompalgo with %v %v", chunks, hash)
 		chunks_wanted, recipe = Diff(chunks, hash)
 		//DPrintf("done chompalgo")
@@ -428,7 +429,7 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 	//	done := int64(-1)
 	//	binary.Write(conn, binary.LittleEndian, done)
 
-	done := FileChunk{-1, 0, -1}
+	done := FileChunk{-1, 0, -1, [32]byte{}}
 	binary.Write(conn, binary.LittleEndian, done)
 	//success = true
 	rename := func() {

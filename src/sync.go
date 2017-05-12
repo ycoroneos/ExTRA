@@ -42,7 +42,8 @@ func syncto(host string, username string, dirtree *Watcher, state map[string]Fil
 		if v.Send {
 			//send and sync
 			DPrintf("sending file %v     -> %v%%", k, float32(count)/float32(len(wants)))
-			if send_file_chunks(conn, k, FastRollhash(k)) {
+			//if send_file_chunks(conn, k, FastRollhash(k)) {
+			if send_file_chunks(conn, k, RollhashSha(k)) {
 				//if send_file_chunks(conn, k, v.Chunks) {
 				//update the file's synchronization vector on success
 				file := versions[k]
