@@ -355,12 +355,15 @@ func receive_file_chunks(conn net.Conn) (string, bool, func()) {
 
 	chunks_wanted := chunks
 	recipe := make([]ChunkDelta, 0)
-	if filesz > (1024 * 10 * 10) {
+	//if filesz > (1024 * 10 * 10) {
+	if filesz > (1) {
 		//DPrintf("compute rolling hash")
 		//hash := FastRollhash(filename)
 		hash := RollhashSha(filename)
 		//DPrintf("done rolling hash, start chompalgo with %v %v", chunks, hash)
+		DPrintf("total chunks %v", len(chunks))
 		chunks_wanted, recipe = Diff(chunks, hash)
+		DPrintf("chunks wanted %v", len(chunks_wanted))
 		//DPrintf("done chompalgo")
 	}
 

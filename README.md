@@ -38,7 +38,7 @@ with 22000 files must only maintain about 20 MB of state.
 ### Time Invariance
 Computer wall clock time is not involved in the synchronization at all.
 
-## Non-distributed
+### Distributed
 There is no central coordinator. All synchronizations are pairwise and
 state is replicated across all participants.
 
